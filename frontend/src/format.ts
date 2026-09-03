@@ -1,27 +1,43 @@
-export function shortAddr(addr: string): string {
-  if (!addr) return '';
-  return addr.length <= 14 ? addr : `${addr.slice(0, 6)}\u2026${addr.slice(-4)}`;
+export function shortenAddress(addr?: string | null): string {
+  if (!addr) return "—";
+  if (addr.length <= 16) return addr;
+  return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-export function eth(amount: string | number): string {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (!isFinite(n)) return '0';
-  if (n !== 0 && Math.abs(n) < 0.0001) return '<0.0001';
-  return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+export function shortenHash(hash?: string | null): string {
+  if (!hash) return "—";
+  if (hash.length <= 16) return hash;
+  return `${hash.slice(0, 10)}…${hash.slice(-6)}`;
 }
 
-export function when(iso: string | null): string {
-  if (!iso) return '\u2014';
-  const d = new Date(iso);
-  return isNaN(d.getTime())
-    ? '\u2014'
-    : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+export function formatEth(val?: string | number | null): string {
+  if (val === null || val === undefined) return "0.00 ETH";
+  const num = typeof val === "number" ? val : parseFloat(val);
+  if (isNaN(num)) return "0.00 ETH";
+  return `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ETH`;
 }
 
-export async function copy(text: string): Promise<void> {
+export function formatDate(isoStr?: string | null): string {
+  if (!isoStr) return "—";
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return isoStr;
+  }
+}
+
+export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    /* clipboard unavailable; nothing to recover */
+    return false;
   }
 }

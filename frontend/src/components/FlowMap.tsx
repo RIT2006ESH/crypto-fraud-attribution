@@ -1,21 +1,11 @@
-import { useEffect, useRef } from 'react';
-import cytoscape, { type Core, type ElementDefinition } from 'cytoscape';
-import dagre from 'cytoscape-dagre';
-import type { TraceResult } from '../types';
-import { eth, shortAddr } from '../format';
+import { useEffect, useRef, useCallback } from "react";
+import cytoscape from "cytoscape";
+import dagre from "cytoscape-dagre";
+import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Download } from "lucide-react";
+import type { TraceResult } from "../types";
+import { shortenAddress } from "../format";
 
-let registered = false;
-if (!registered) {
-  cytoscape.use(dagre);
-  registered = true;
-}
-
-const COLORS: Record<string, string> = {
-  EXCHANGE: '#10634a',
-  MIXER: '#4a2e86',
-  SANCTIONED: '#8e1b2e',
-  UNLABELED: '#8496a3',
-};
+cytoscape.use(dagre);
 
 interface Props {
   result: TraceResult;
@@ -23,115 +13,229 @@ interface Props {
 }
 
 export default function FlowMap({ result, onSelect }: Props) {
-  const host = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
 
-  useEffect(() => {
-    if (!host.current) return;
+  const initGraph = useCallback(() => {
+    if (!containerRef.current || !result || !result.nodes || result.nodes.length === 0) return;
 
-    const known = new Set(result.nodes.map((n) => n.address.toLowerCase()));
-    const root = result.walletAddress.toLowerCase();
+    if (cyRef.current) {
+      cyRef.current.destroy();
+    }
 
-    const elements: ElementDefinition[] = result.nodes.map((n) => {
-      const id = n.address.toLowerCase();
-      const type = n.labelType ?? 'UNLABELED';
-      return {
-        data: { id, label: shortAddr(n.address), full: n.address, hop: n.hopDepth, type },
-        classes: [type, id === root ? 'root' : ''].join(' ').trim(),
-      };
+    const rootAddress = result.walletAddress.toLowerCase();
+
+    // Map Cytoscape Elements
+    const elements: cytoscape.ElementDefinition[] = [];
+
+    // Nodes
+    result.nodes.forEach((n) => {
+      const isRoot = n.address.toLowerCase() === rootAddress;
+      const type = n.labelType || "UNLABELED";
+      const short = shortenAddress(n.address);
+
+      elements.push({
+        data: {
+          id: n.address.toLowerCase(),
+          label: `${short}\n[${type}]`,
+          address: n.address,
+          hopDepth: n.hopDepth,
+          labelType: type,
+          isRoot,
+        },
+        classes: `${type.toLowerCase()} ${isRoot ? "root-node" : ""}`,
+      });
     });
 
-    // Edges can outlive their endpoints when the node cap trims the frontier.
-    result.edges.forEach((e, i) => {
-      const s = e.fromAddress.toLowerCase();
-      const t = e.toAddress.toLowerCase();
-      if (!known.has(s) || !known.has(t)) return;
+    // Edges
+    result.edges.forEach((e) => {
       elements.push({
-        data: { id: `e${i}`, source: s, target: t, label: `${eth(e.amount)} ETH` },
+        data: {
+          id: `${e.fromAddress}-${e.toAddress}-${e.txHash}`,
+          source: e.fromAddress.toLowerCase(),
+          target: e.toAddress.toLowerCase(),
+          amount: `${parseFloat(String(e.amount)).toFixed(2)} ETH`,
+          txHash: e.txHash,
+        },
       });
     });
 
     const cy = cytoscape({
-      container: host.current,
+      container: containerRef.current,
       elements,
-      minZoom: 0.2,
-      maxZoom: 2.5,
       style: [
         {
-          selector: 'node',
+          selector: "node",
           style: {
-            label: 'data(label)',
-            'font-family': 'IBM Plex Mono, monospace',
-            'font-size': 11,
-            'text-valign': 'center',
-            color: '#16202b',
-            shape: 'round-rectangle',
-            width: 104,
-            height: 34,
-            'background-color': '#fdfefe',
-            'border-width': 1,
-            'border-color': '#9fb0bd',
+            label: "data(label)",
+            "text-valign": "bottom",
+            "text-margin-y": 6,
+            color: "#94a3b8",
+            "font-size": "10px",
+            "font-family": "JetBrains Mono, monospace",
+            "text-wrap": "wrap",
+            width: 36,
+            height: 36,
+            "background-color": "#0b111a",
+            "border-width": 2,
+            "border-color": "#475569",
+            "transition-property": "border-color, border-width, background-color",
+            "transition-duration": 0.2,
           },
         },
-        { selector: 'node.root', style: { 'border-width': 3, 'border-color': '#4a2e86', width: 118 } },
         {
-          selector: 'node.EXCHANGE',
-          style: { 'background-color': COLORS.EXCHANGE, color: '#fdfefe', 'border-color': '#0a4433', 'border-width': 2, width: 118 },
-        },
-        { selector: 'node.MIXER', style: { 'background-color': COLORS.MIXER, color: '#fdfefe', 'border-color': '#2f1c5c', 'border-width': 2 } },
-        { selector: 'node.SANCTIONED', style: { 'background-color': COLORS.SANCTIONED, color: '#fdfefe', 'border-color': '#5d101e', 'border-width': 2 } },
-        {
-          selector: 'edge',
+          selector: "node.root-node",
           style: {
-            label: 'data(label)',
-            'font-family': 'IBM Plex Mono, monospace',
-            'font-size': 9,
-            color: '#5a6b7a',
-            'text-background-color': '#e8edf1',
-            'text-background-opacity': 0.9,
-            'text-background-padding': '2px',
-            width: 1.4,
-            'line-color': '#9fb0bd',
-            'target-arrow-color': '#9fb0bd',
-            'target-arrow-shape': 'triangle',
-            'arrow-scale': 0.85,
-            'curve-style': 'bezier',
+            "border-width": 3,
+            "border-color": "#ffffff",
+            "background-color": "#1e293b",
+            width: 44,
+            height: 44,
           },
         },
-        { selector: '.faded', style: { opacity: 0.18 } },
-        { selector: '.picked', style: { 'border-width': 4, 'border-color': '#16202b' } },
+        {
+          selector: "node.exchange",
+          style: {
+            "border-color": "#10b981",
+            "background-color": "#064e3b",
+          },
+        },
+        {
+          selector: "node.mixer",
+          style: {
+            "border-color": "#8b5cf6",
+            "background-color": "#4c1d95",
+          },
+        },
+        {
+          selector: "node.sanctioned",
+          style: {
+            "border-color": "#ef4444",
+            "background-color": "#7f1d1d",
+          },
+        },
+        {
+          selector: "node:selected",
+          style: {
+            "border-color": "#06b6d4",
+            "border-width": 4,
+          },
+        },
+        {
+          selector: "edge",
+          style: {
+            width: 2,
+            "line-color": "#334155",
+            "target-arrow-color": "#334155",
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier",
+            label: "data(amount)",
+            color: "#64748b",
+            "font-size": "9px",
+            "font-family": "JetBrains Mono, monospace",
+            "text-rotation": "autorotate",
+            "text-margin-y": -8,
+          },
+        },
+        {
+          selector: "edge.highlighted",
+          style: {
+            width: 3,
+            "line-color": "#06b6d4",
+            "target-arrow-color": "#06b6d4",
+            color: "#06b6d4",
+          },
+        },
+        {
+          selector: ".dimmed",
+          style: {
+            opacity: 0.25,
+          },
+        },
       ],
-      layout: { name: 'dagre', rankDir: 'LR', nodeSep: 26, rankSep: 96, padding: 34 } as never,
+      layout: {
+        name: "dagre",
+        rankDir: "LR",
+        nodeSep: 60,
+        rankSep: 100,
+        animate: true,
+        animationDuration: 500,
+      } as any,
     });
 
-    cy.on('tap', 'node', (evt) => {
+    // Node click handlers
+    cy.on("tap", "node", (evt) => {
       const node = evt.target;
-      cy.elements().removeClass('faded picked');
-      const keep = node.closedNeighborhood();
-      cy.elements().difference(keep).addClass('faded');
-      node.addClass('picked');
-      onSelect(node.data('full'));
+      const addr = node.data("address");
+      onSelect(addr);
+
+      // Highlight neighbors
+      cy.elements().addClass("dimmed");
+      node.removeClass("dimmed");
+      node.neighborhood().removeClass("dimmed");
+      node.connectedEdges().addClass("highlighted");
     });
 
-    cy.on('tap', (evt) => {
+    cy.on("tap", (evt) => {
       if (evt.target === cy) {
-        cy.elements().removeClass('faded picked');
         onSelect(null);
-        cy.animate({ fit: { eles: cy.elements(), padding: 34 }, duration: 220 });
+        cy.elements().removeClass("dimmed");
+        cy.edges().removeClass("highlighted");
       }
     });
 
-    cy.ready(() => cy.fit(undefined, 34));
     cyRef.current = cy;
-
-    const resize = () => cy.resize();
-    window.addEventListener('resize', resize);
-    return () => {
-      window.removeEventListener('resize', resize);
-      cy.destroy();
-      cyRef.current = null;
-    };
   }, [result, onSelect]);
 
-  return <div className="graph-canvas" ref={host} />;
+  useEffect(() => {
+    initGraph();
+    return () => {
+      if (cyRef.current) cyRef.current.destroy();
+    };
+  }, [initGraph]);
+
+  const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2);
+  const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() * 0.8);
+  const handleFit = () => cyRef.current?.fit(undefined, 40);
+  const handleReset = () => {
+    onSelect(null);
+    if (cyRef.current) {
+      cyRef.current.elements().removeClass("dimmed");
+      cyRef.current.edges().removeClass("highlighted");
+      cyRef.current.fit(undefined, 40);
+    }
+  };
+
+  const handleDownloadPng = () => {
+    if (!cyRef.current) return;
+    const png64 = cyRef.current.png({ full: true, bg: "#05070b" });
+    const link = document.createElement("a");
+    link.download = `casetrace-graph-${result.id.slice(0, 8)}.png`;
+    link.href = png64;
+    link.click();
+  };
+
+  return (
+    <div className="graph-viewport">
+      <div id="cytoscape-container" ref={containerRef} />
+
+      <div className="floating-controls">
+        <button type="button" className="ctrl-btn" onClick={handleZoomIn} title="Zoom In">
+          <ZoomIn size={16} />
+        </button>
+        <button type="button" className="ctrl-btn" onClick={handleZoomOut} title="Zoom Out">
+          <ZoomOut size={16} />
+        </button>
+        <button type="button" className="ctrl-btn" onClick={handleFit} title="Fit View">
+          <Maximize2 size={16} />
+        </button>
+        <button type="button" className="ctrl-btn" onClick={handleReset} title="Reset Focus">
+          <RotateCcw size={16} />
+        </button>
+        <button type="button" className="ctrl-btn" onClick={handleDownloadPng} title="Export Graph PNG">
+          <Download size={16} />
+        </button>
+      </div>
+    </div>
+  );
 }
