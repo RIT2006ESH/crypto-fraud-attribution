@@ -7,8 +7,8 @@ export class TraceOrchestrationService {
     traceService;
     riskScoringService;
     preferCached;
-    constructor() {
-        this.traceService = new TraceService();
+    constructor(labelService) {
+        this.traceService = new TraceService(labelService);
         this.riskScoringService = new RiskScoringService();
         this.preferCached = config.trace.preferCached;
     }

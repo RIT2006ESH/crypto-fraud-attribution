@@ -29,6 +29,7 @@ export function initDatabase() {
       entity_name TEXT,
       source TEXT,
       confidence REAL,
+      updated_at TEXT,
       UNIQUE(address, chain)
     );
 
@@ -65,7 +66,23 @@ export function initDatabase() {
       amount TEXT,
       tx_timestamp TEXT
     );
+
+    CREATE INDEX IF NOT EXISTS idx_graph_nodes_trace ON graph_nodes(trace_id);
+    CREATE INDEX IF NOT EXISTS idx_graph_edges_trace ON graph_edges(trace_id);
+    CREATE INDEX IF NOT EXISTS idx_trace_requests_wallet ON trace_requests(wallet_address, chain, status);
+    CREATE INDEX IF NOT EXISTS idx_address_labels_lookup ON address_labels(chain, address);
   `);
+
+  migrate();
+}
+
+/** Additive migrations for databases created before a column existed. */
+function migrate() {
+  const columns = db.prepare("PRAGMA table_info(address_labels)").all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === "updated_at")) {
+    db.exec("ALTER TABLE address_labels ADD COLUMN updated_at TEXT");
+    console.log("[database] migrated address_labels: added updated_at");
+  }
 }
 
 // Repositories
@@ -73,24 +90,50 @@ export function initDatabase() {
 export const addressLabelRepository = {
   findByAddressIgnoreCaseAndChain(address: string, chain: string): AddressLabel | undefined {
     const stmt = db.prepare(
-      "SELECT id, address, chain, label_type as labelType, entity_name as entityName, source, confidence FROM address_labels WHERE LOWER(address) = LOWER(?) AND chain = ?"
+      "SELECT id, address, chain, label_type as labelType, entity_name as entityName, source, confidence, updated_at as updatedAt FROM address_labels WHERE LOWER(address) = LOWER(?) AND chain = ?"
     );
     return stmt.get(address, chain) as AddressLabel | undefined;
   },
 
+  /**
+   * Cache read that respects a TTL. Returns undefined when the row is missing or stale,
+   * which is the signal for LabelService to go back out to Etherscan.
+   */
+  findFresh(address: string, chain: string, ttlHours: number): AddressLabel | undefined {
+    const row = this.findByAddressIgnoreCaseAndChain(address, chain);
+    if (!row) return undefined;
+    if (ttlHours <= 0) return row;
+    if (!row.updatedAt) return undefined;
+
+    const ageMs = Date.now() - new Date(row.updatedAt).getTime();
+    if (!Number.isFinite(ageMs) || ageMs > ttlHours * 3_600_000) return undefined;
+    return row;
+  },
+
   save(label: Omit<AddressLabel, "id"> & { id?: string }): AddressLabel {
     const id = label.id || crypto.randomUUID();
+    const updatedAt = label.updatedAt || new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO address_labels (id, address, chain, label_type, entity_name, source, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO address_labels (id, address, chain, label_type, entity_name, source, confidence, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(address, chain) DO UPDATE SET
         label_type = excluded.label_type,
         entity_name = excluded.entity_name,
         source = excluded.source,
-        confidence = excluded.confidence
+        confidence = excluded.confidence,
+        updated_at = excluded.updated_at
     `);
-    stmt.run(id, label.address, label.chain, label.labelType, label.entityName || null, label.source || null, label.confidence || null);
-    return { ...label, id };
+    stmt.run(
+      id,
+      label.address,
+      label.chain,
+      label.labelType,
+      label.entityName ?? null,
+      label.source ?? null,
+      label.confidence ?? null,
+      updatedAt
+    );
+    return { ...label, id, updatedAt };
   },
 };
 

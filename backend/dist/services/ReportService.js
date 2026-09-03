@@ -1,5 +1,9 @@
 import PDFDocument from "pdfkit";
 const MAX_LEDGER_ROWS = 40;
+/** Ledger column width caps the displayed precision; the exact value stays in the case record. */
+const AMOUNT_DECIMALS = 6;
+const DECIMAL_RE = /^(\d+)(?:\.(\d+))?$/;
+const DUST_AMOUNT = `<0.${"0".repeat(AMOUNT_DECIMALS - 1)}1`;
 export class ReportService {
     async render(r) {
         return new Promise((resolve, reject) => {
@@ -164,13 +168,31 @@ function shorten(addr) {
         return addr;
     return `${addr.substring(0, 10)}…${addr.substring(addr.length - 6)}`;
 }
+/**
+ * Formats an ETH amount for the ledger column.
+ *
+ * `amount` arrives as an exact wei-derived decimal string (see weiToEth), so it is trimmed
+ * as text: parseFloat/toFixed rounds values such as 0.005000361867 and loses precision on
+ * large magnitudes.
+ */
 function formatAmount(val) {
     if (val === null || val === undefined)
         return "0";
-    const num = typeof val === "number" ? val : parseFloat(val);
-    if (isNaN(num))
-        return "0";
-    return num.toFixed(6).replace(/\.?0+$/, "");
+    const raw = typeof val === "number" ? (Number.isFinite(val) ? val.toFixed(18) : "0") : val.trim();
+    const parts = DECIMAL_RE.exec(raw);
+    // Unexpected shape: show it verbatim rather than a misleading "0".
+    if (!parts)
+        return raw || "0";
+    const whole = parts[1].replace(/^0+(?=\d)/, "");
+    const fraction = parts[2] ?? "";
+    const shown = fraction.slice(0, AMOUNT_DECIMALS).replace(/0+$/, "");
+    if (shown)
+        return `${whole}.${shown}`;
+    // Nonzero but under the displayed precision. A dust transfer must not read as "0"
+    // in an evidence ledger.
+    if (whole === "0" && /[1-9]/.test(fraction))
+        return DUST_AMOUNT;
+    return whole;
 }
 function formatDate(isoStr) {
     if (!isoStr)

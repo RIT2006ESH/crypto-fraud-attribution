@@ -7,6 +7,7 @@ import {
 } from "../db/database.js";
 import { TraceService } from "./TraceService.js";
 import { RiskScoringService } from "./RiskScoringService.js";
+import { LabelService } from "../labels/LabelService.js";
 import {
   EdgeDto,
   ExchangeDto,
@@ -25,8 +26,8 @@ export class TraceOrchestrationService {
   private riskScoringService: RiskScoringService;
   private preferCached: boolean;
 
-  constructor() {
-    this.traceService = new TraceService();
+  constructor(labelService?: LabelService) {
+    this.traceService = new TraceService(labelService);
     this.riskScoringService = new RiskScoringService();
     this.preferCached = config.trace.preferCached;
   }

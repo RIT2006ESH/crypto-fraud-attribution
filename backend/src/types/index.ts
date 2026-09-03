@@ -22,6 +22,8 @@ export interface AddressLabel {
   entityName?: string | null;
   source?: string | null;
   confidence?: number | null;
+  /** ISO timestamp of the last resolution; drives the label cache TTL. */
+  updatedAt?: string | null;
 }
 
 export interface TraceRequest {
@@ -62,7 +64,9 @@ export interface ChainTransaction {
   txHash: string;
   fromAddress: string;
   toAddress: string;
-  amount: string; // native ETH
+  amount: string; // native ETH, exact decimal string
+  /** Raw wei, kept for exact ordering/comparison. Internal only, not exposed in DTOs. */
+  amountWei?: string;
   timestamp: string; // ISO string
   chain: string;
 }

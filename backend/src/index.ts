@@ -1,32 +1,46 @@
 import express from "express";
 import cors from "cors";
-import { config } from "./config.js";
+import { config, assertConfig } from "./config.js";
 import { initDatabase } from "./db/database.js";
-import { seedLabels } from "./bootstrap/LabelSeeder.js";
-import { traceRouter } from "./controllers/TraceController.js";
+import { createTraceRouter } from "./controllers/TraceController.js";
+import { LabelService } from "./labels/LabelService.js";
+import { KNOWN_ADDRESSES } from "./labels/knownAddresses.js";
+import { TraceOrchestrationService } from "./services/TraceOrchestrationService.js";
+import { createGraphQLHandler } from "./graphql/index.js";
 
-console.log("Starting Crypto Fraud Attribution Node.js Server...");
+console.log("Starting Crypto Fraud Attribution server...");
 
-// 1. Initialize DB tables
+assertConfig();
 initDatabase();
 
-// 2. Seed address labels
-seedLabels();
+// One LabelService (and therefore one label cache) shared by REST and GraphQL.
+const labelService = new LabelService();
+const orchestrationService = new TraceOrchestrationService(labelService);
 
-// 3. Setup Express Server
 const app = express();
-
 app.use(cors());
+
+const graphqlHandler = createGraphQLHandler({ orchestrationService, labelService });
+// Mounted before express.json(): Yoga parses its own request body.
+app.use(config.graphql.path, graphqlHandler);
+
 app.use(express.json());
+app.use("/api/traces", createTraceRouter(orchestrationService));
 
-// Routes
-app.use("/api/traces", traceRouter);
-
-// Health check
-app.get("/health", (req, res) => {
-  res.json({ status: "UP", timestamp: new Date().toISOString() });
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "UP",
+    timestamp: new Date().toISOString(),
+    etherscanConfigured: Boolean(config.etherscan.apiKey) && config.etherscan.apiKey !== "YourApiKeyToken",
+    chainId: config.etherscan.chainId,
+    labelRegistrySize: KNOWN_ADDRESSES.length,
+  });
 });
 
 app.listen(config.port, () => {
-  console.log(`Crypto Fraud Attribution server running on http://localhost:${config.port}`);
+  const base = `http://localhost:${config.port}`;
+  console.log(`REST      ${base}/api/traces`);
+  console.log(`GraphQL   ${base}${config.graphql.path}${config.graphql.graphiql ? "  (GraphiQL enabled)" : ""}`);
+  console.log(`Labels    ${KNOWN_ADDRESSES.length} curated addresses + live Etherscan lookup`);
+  console.log(`Etherscan chainid=${config.etherscan.chainId}, ${config.etherscan.rateLimitPerSec} calls/sec`);
 });

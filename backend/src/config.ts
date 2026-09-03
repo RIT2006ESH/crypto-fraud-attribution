@@ -1,23 +1,73 @@
 import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+// Resolve the backend root from this module's own location so the server picks up
+// backend/.env no matter which directory it was launched from (src/ in dev via tsx,
+// dist/ in production — both are one level below the backend root).
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: path.join(backendRoot, ".env") });
+
+function int(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function bool(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value.trim() === "") return fallback;
+  return value.trim().toLowerCase() === "true";
+}
+
+const apiKey = (process.env.ETHERSCAN_API_KEY || "").trim();
 
 export const config = {
-  port: parseInt(process.env.PORT || "8080", 10),
+  backendRoot,
+  port: int(process.env.PORT, 8080),
   etherscan: {
     baseUrl: process.env.ETHERSCAN_BASE_URL || "https://api.etherscan.io/v2/api",
-    apiKey: process.env.ETHERSCAN_API_KEY || "YourApiKeyToken",
+    apiKey,
+    chainId: int(process.env.ETHERSCAN_CHAIN_ID, 1),
+    // Free tier allows 5 calls/sec. Stay under it: the tracer issues one call per hop.
+    rateLimitPerSec: int(process.env.ETHERSCAN_RATE_LIMIT_PER_SEC, 4),
+    maxRetries: int(process.env.ETHERSCAN_MAX_RETRIES, 3),
+    txPageSize: int(process.env.ETHERSCAN_TX_PAGE_SIZE, 1000),
+    // One page per hop keeps a trace to one Etherscan call per address. Raise it to widen
+    // the window on long-lived wallets at the cost of latency.
+    txMaxPages: int(process.env.ETHERSCAN_TX_MAX_PAGES, 1),
+    // "desc" = newest first, which is the relevant window when tracing where funds went
+    // now. "asc" reproduces the original oldest-first behaviour.
+    txSort: (process.env.ETHERSCAN_TX_SORT || "desc").toLowerCase() === "asc" ? "asc" : "desc",
+    timeoutMs: int(process.env.ETHERSCAN_TIMEOUT_MS, 20000),
   },
   trace: {
-    maxHops: parseInt(process.env.TRACE_MAX_HOPS || "5", 10),
-    maxFanOut: parseInt(process.env.TRACE_MAX_FANOUT || "20", 10),
-    maxNodes: parseInt(process.env.TRACE_MAX_NODES || "200", 10),
-    preferCached: process.env.TRACE_PREFER_CACHED === "true",
+    maxHops: int(process.env.TRACE_MAX_HOPS, 4),
+    maxFanOut: int(process.env.TRACE_MAX_FANOUT, 10),
+    maxNodes: int(process.env.TRACE_MAX_NODES, 60),
+    preferCached: bool(process.env.TRACE_PREFER_CACHED, false),
   },
   labels: {
-    seedOnStartup: process.env.LABELS_SEED_ON_STARTUP !== "false",
-    csvPath: process.env.LABELS_CSV_PATH || path.join(process.cwd(), "seed-labels.csv"),
+    // Derive labels from on-chain/contract metadata when the curated registry misses.
+    enrichFromChain: bool(process.env.LABELS_ENRICH_FROM_CHAIN, true),
+    cacheTtlHours: int(process.env.LABELS_CACHE_TTL_HOURS, 168),
   },
-  dbPath: process.env.DB_PATH || path.join(process.cwd(), "data", "cryptofraud.sqlite"),
+  graphql: {
+    path: process.env.GRAPHQL_PATH || "/graphql",
+    graphiql: bool(process.env.GRAPHQL_GRAPHIQL, true),
+  },
+  dbPath: process.env.DB_PATH
+    ? path.resolve(backendRoot, process.env.DB_PATH)
+    : path.join(backendRoot, "data", "cryptofraud.sqlite"),
 };
+
+/** Fail loudly at boot instead of silently returning empty traces on every request. */
+export function assertConfig(): void {
+  if (!config.etherscan.apiKey) {
+    console.error(
+      "[config] ETHERSCAN_API_KEY is not set. Copy backend/.env.example to backend/.env and add your key —\n" +
+        "         without it every Etherscan call returns 'Missing/Invalid API Key' and traces come back empty."
+    );
+  }
+  if (config.etherscan.apiKey === "YourApiKeyToken") {
+    console.error("[config] ETHERSCAN_API_KEY is still the placeholder value; Etherscan will reject every call.");
+  }
+}
