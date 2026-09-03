@@ -1,15 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { config } from "../config.js";
-import {
-  AddressLabel,
-  GraphEdge,
-  GraphNode,
-  TraceRequest,
-  TraceStatus,
-  LabelType,
-} from "../types/index.js";
+import { config } from "../config/index.js";
 
 const dbDir = path.dirname(config.dbPath);
 if (!fs.existsSync(dbDir)) {
@@ -18,6 +10,7 @@ if (!fs.existsSync(dbDir)) {
 
 export const db = new Database(config.dbPath);
 db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
 
 export function initDatabase() {
   db.exec(`
@@ -53,7 +46,8 @@ export function initDatabase() {
       hop_depth INTEGER NOT NULL,
       label_type TEXT,
       label_confidence REAL,
-      partial_data INTEGER NOT NULL DEFAULT 0
+      partial_data INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY(trace_id) REFERENCES trace_requests(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS graph_edges (
@@ -63,162 +57,15 @@ export function initDatabase() {
       to_address TEXT NOT NULL,
       tx_hash TEXT NOT NULL,
       amount TEXT,
-      tx_timestamp TEXT
+      tx_timestamp TEXT,
+      FOREIGN KEY(trace_id) REFERENCES trace_requests(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS graph_cache (
+      trace_id TEXT PRIMARY KEY,
+      graph_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(trace_id) REFERENCES trace_requests(id) ON DELETE CASCADE
     );
   `);
 }
-
-// Repositories
-
-export const addressLabelRepository = {
-  findByAddressIgnoreCaseAndChain(address: string, chain: string): AddressLabel | undefined {
-    const stmt = db.prepare(
-      "SELECT id, address, chain, label_type as labelType, entity_name as entityName, source, confidence FROM address_labels WHERE LOWER(address) = LOWER(?) AND chain = ?"
-    );
-    return stmt.get(address, chain) as AddressLabel | undefined;
-  },
-
-  save(label: Omit<AddressLabel, "id"> & { id?: string }): AddressLabel {
-    const id = label.id || crypto.randomUUID();
-    const stmt = db.prepare(`
-      INSERT INTO address_labels (id, address, chain, label_type, entity_name, source, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(address, chain) DO UPDATE SET
-        label_type = excluded.label_type,
-        entity_name = excluded.entity_name,
-        source = excluded.source,
-        confidence = excluded.confidence
-    `);
-    stmt.run(id, label.address, label.chain, label.labelType, label.entityName || null, label.source || null, label.confidence || null);
-    return { ...label, id };
-  },
-};
-
-export const traceRequestRepository = {
-  findById(id: string): TraceRequest | undefined {
-    const stmt = db.prepare(`
-      SELECT id, case_id as caseId, wallet_address as walletAddress, chain, status,
-             hops_traced as hopsTraced, risk_score as riskScore, flagged_patterns as flaggedPatterns,
-             requested_at as requestedAt, completed_at as completedAt, failure_reason as failureReason
-      FROM trace_requests WHERE id = ?
-    `);
-    return stmt.get(id) as TraceRequest | undefined;
-  },
-
-  findByWalletAddressIgnoreCaseAndChainAndStatusIn(address: string, chain: string, statuses: TraceStatus[]): TraceRequest[] {
-    const placeholders = statuses.map(() => "?").join(",");
-    const stmt = db.prepare(`
-      SELECT id, case_id as caseId, wallet_address as walletAddress, chain, status,
-             hops_traced as hopsTraced, risk_score as riskScore, flagged_patterns as flaggedPatterns,
-             requested_at as requestedAt, completed_at as completedAt, failure_reason as failureReason
-      FROM trace_requests
-      WHERE LOWER(wallet_address) = LOWER(?) AND chain = ? AND status IN (${placeholders})
-    `);
-    return stmt.all(address, chain, ...statuses) as TraceRequest[];
-  },
-
-  save(req: Partial<TraceRequest> & { walletAddress: string; chain: string; status: TraceStatus }): TraceRequest {
-    const id = req.id || crypto.randomUUID();
-    const requestedAt = req.requestedAt || new Date().toISOString();
-    const existing = req.id ? this.findById(req.id) : undefined;
-
-    if (existing) {
-      const stmt = db.prepare(`
-        UPDATE trace_requests
-        SET case_id = ?, wallet_address = ?, chain = ?, status = ?, hops_traced = ?, risk_score = ?, flagged_patterns = ?, completed_at = ?, failure_reason = ?
-        WHERE id = ?
-      `);
-      stmt.run(
-        req.caseId ?? existing.caseId ?? null,
-        req.walletAddress,
-        req.chain,
-        req.status,
-        req.hopsTraced ?? existing.hopsTraced ?? null,
-        req.riskScore ?? existing.riskScore ?? null,
-        req.flaggedPatterns ?? existing.flaggedPatterns ?? null,
-        req.completedAt ?? existing.completedAt ?? null,
-        req.failureReason ?? existing.failureReason ?? null,
-        id
-      );
-    } else {
-      const stmt = db.prepare(`
-        INSERT INTO trace_requests (id, case_id, wallet_address, chain, status, hops_traced, risk_score, flagged_patterns, requested_at, completed_at, failure_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(
-        id,
-        req.caseId || null,
-        req.walletAddress,
-        req.chain,
-        req.status,
-        req.hopsTraced ?? null,
-        req.riskScore ?? null,
-        req.flaggedPatterns || null,
-        requestedAt,
-        req.completedAt || null,
-        req.failureReason || null
-      );
-    }
-    return this.findById(id)!;
-  },
-};
-
-export const graphNodeRepository = {
-  findByTraceId(traceId: string): GraphNode[] {
-    const stmt = db.prepare(`
-      SELECT id, trace_id as traceId, address, hop_depth as hopDepth, label_type as labelType, label_confidence as labelConfidence, partial_data as partialData
-      FROM graph_nodes WHERE trace_id = ?
-    `);
-    const rows = stmt.all(traceId) as any[];
-    return rows.map((r) => ({
-      ...r,
-      partialData: Boolean(r.partialData),
-    }));
-  },
-
-  save(node: Omit<GraphNode, "id"> & { id?: string }): GraphNode {
-    const id = node.id || crypto.randomUUID();
-    const stmt = db.prepare(`
-      INSERT INTO graph_nodes (id, trace_id, address, hop_depth, label_type, label_confidence, partial_data)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-      id,
-      node.traceId,
-      node.address,
-      node.hopDepth,
-      node.labelType || null,
-      node.labelConfidence ?? null,
-      node.partialData ? 1 : 0
-    );
-    return { ...node, id };
-  },
-};
-
-export const graphEdgeRepository = {
-  findByTraceId(traceId: string): GraphEdge[] {
-    const stmt = db.prepare(`
-      SELECT id, trace_id as traceId, from_address as fromAddress, to_address as toAddress, tx_hash as txHash, amount, tx_timestamp as txTimestamp
-      FROM graph_edges WHERE trace_id = ?
-    `);
-    return stmt.all(traceId) as GraphEdge[];
-  },
-
-  save(edge: Omit<GraphEdge, "id"> & { id?: string }): GraphEdge {
-    const id = edge.id || crypto.randomUUID();
-    const stmt = db.prepare(`
-      INSERT INTO graph_edges (id, trace_id, from_address, to_address, tx_hash, amount, tx_timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-      id,
-      edge.traceId,
-      edge.fromAddress,
-      edge.toAddress,
-      edge.txHash,
-      edge.amount,
-      edge.txTimestamp || null
-    );
-    return { ...edge, id };
-  },
-};

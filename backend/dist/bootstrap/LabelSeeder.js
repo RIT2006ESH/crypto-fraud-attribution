@@ -1,6 +1,6 @@
 import fs from "fs";
-import { config } from "../config.js";
-import { addressLabelRepository } from "../db/database.js";
+import { config } from "../config/index.js";
+import { labelRepository } from "../db/repositories/index.js";
 import { LabelType } from "../types/index.js";
 export function seedLabels() {
     if (!config.labels.seedOnStartup) {
@@ -42,12 +42,12 @@ export function seedLabels() {
                 malformed++;
                 continue;
             }
-            const existing = addressLabelRepository.findByAddressIgnoreCaseAndChain(address, chain);
+            const existing = labelRepository.findByAddressIgnoreCaseAndChain(address, chain);
             if (existing) {
                 skipped++;
                 continue;
             }
-            addressLabelRepository.save({
+            labelRepository.save({
                 address,
                 chain,
                 labelType: rawType,

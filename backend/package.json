@@ -1,7 +1,7 @@
 {
   "name": "crypto-fraud-attribution-backend",
   "version": "1.0.0",
-  "description": "Crypto Fraud Attribution Node.js Backend",
+  "description": "CaseTrace Crypto Fraud Attribution Backend with GraphQL, Express, SQLite & PDFKit",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -10,12 +10,14 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@apollo/server": "^4.11.3",
     "axios": "^1.7.9",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "csv-parse": "^5.6.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "graphql": "^16.10.0",
     "pdfkit": "^0.16.0",
     "uuid": "^11.1.0",
     "zod": "^3.24.2"

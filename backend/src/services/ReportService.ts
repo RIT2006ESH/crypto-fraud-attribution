@@ -17,61 +17,75 @@ export class ReportService {
         doc.on("end", () => resolve(Buffer.concat(buffers)));
         doc.on("error", (err) => reject(err));
 
-        // Header
-        doc.font("Helvetica-Bold").fontSize(15).fillColor("#111827").text("CRYPTO FRAUD ATTRIBUTION REPORT");
+        // 1. Cover Page & Header
+        doc.font("Helvetica-Bold").fontSize(18).fillColor("#05070B").text("CASETRACE FORENSIC REPORT");
         doc.moveDown(0.2);
+        doc.font("Helvetica-Bold").fontSize(12).fillColor("#3B82F6").text("Crypto Fraud Attribution Platform");
+        doc.moveDown(0.5);
 
         const nowStr = formatDate(new Date().toISOString());
-        doc.font("Helvetica-Oblique").fontSize(8).fillColor("#6B7280").text(`Generated ${nowStr} IST`);
+        doc.font("Helvetica-Oblique").fontSize(8).fillColor("#6B7280").text(`Generated: ${nowStr} | Confidential`);
+        doc.moveDown(1);
+        doc.moveTo(48, doc.y).lineTo(540, doc.y).strokeColor("#E5E7EB").stroke();
         doc.moveDown(1);
 
-        // Metadata Table
+        // Metadata Block
         const metaFields = [
-          ["Case reference", r.caseId || "—"],
-          ["Trace identifier", r.id || "—"],
-          ["Chain", r.chain || "—"],
-          ["Reported wallet", r.walletAddress || "—"],
-          ["Trace status", r.status || "—"],
-          ["Hops traced", (r.hopsTraced ?? 0).toString()],
-          ["Addresses mapped", (r.nodes?.length || 0).toString()],
-          ["Transfers recorded", (r.edges?.length || 0).toString()],
+          ["Case Reference ID", r.caseId || "—"],
+          ["Trace Identifier", r.id || "—"],
+          ["Chain Network", r.chain || "—"],
+          ["Target Wallet Address", r.walletAddress || "—"],
+          ["Trace Execution Status", r.status || "—"],
+          ["Hops Traced Depth", (r.hopsTraced ?? 0).toString()],
+          ["Addresses Discovered", (r.nodes?.length || 0).toString()],
+          ["Transfers Recorded", (r.edges?.length || 0).toString()],
         ];
 
         let startY = doc.y;
         metaFields.forEach(([key, val]) => {
-          doc.font("Helvetica").fontSize(10).fillColor("#374151").text(key, 48, startY, { width: 140 });
-          const isWallet = key.includes("wallet");
+          doc.font("Helvetica-Bold").fontSize(9).fillColor("#374151").text(key, 48, startY, { width: 150 });
+          const isWallet = key.includes("Wallet") || key.includes("Identifier");
           doc
             .font(isWallet ? "Courier" : "Helvetica")
-            .fontSize(isWallet ? 9 : 10)
+            .fontSize(9)
             .fillColor("#111827")
-            .text(val, 190, startY, { width: 350 });
-          startY += 18;
+            .text(val, 200, startY, { width: 340 });
+          startY += 16;
         });
 
-        doc.y = startY + 10;
+        doc.y = startY + 12;
 
-        // Section 1: Attribution finding
-        heading(doc, "1. Attribution finding");
+        // 2. Executive Summary
+        heading(doc, "Executive Summary");
+
+        const score = r.riskScore ?? 0;
+        const category = r.riskCategory || "LOW";
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(11)
+          .fillColor("#111827")
+          .text(`Risk Score: ${score} / 100 — Assessment Level: ${category}`);
+        doc.moveDown(0.4);
 
         if (r.nearestExchange) {
           const ex = r.nearestExchange;
-          const entityName = ex.entity || "Unnamed exchange";
+          const entityName = ex.entity || "Regulated Service";
           const hopText = ex.hopDepth === 1 ? "1 hop" : `${ex.hopDepth} hops`;
           doc
             .font("Helvetica")
             .fontSize(10)
             .fillColor("#111827")
-            .text(`${entityName} receives deposits ${hopText} from the reported wallet.`);
+            .text(`Attribution Finding: ${entityName} receives deposits ${hopText} away from target wallet.`);
           doc.moveDown(0.2);
-          doc.font("Courier").fontSize(9).fillColor("#4B5563").text(ex.address);
+          doc.font("Courier").fontSize(9).fillColor("#4B5563").text(`Deposit Address: ${ex.address}`);
           doc.moveDown(0.4);
           doc
             .font("Helvetica")
-            .fontSize(10)
+            .fontSize(9)
             .fillColor("#374151")
             .text(
-              "Recommended action: serve a disclosure request on this exchange for the account controlling the above deposit address."
+              "Recommended Legal Action: Issue disclosure request/subpoena on this entity to obtain KYC records."
             );
         } else {
           const hopsText = (r.hopsTraced ?? 0).toString();
@@ -80,60 +94,44 @@ export class ReportService {
             .fontSize(10)
             .fillColor("#374151")
             .text(
-              `No exchange or regulated service was reached within ${hopsText} hops. Funds remain in unlabelled wallets, or exited through a service absent from the current label set.`
+              `No regulated exchange was reached within ${hopsText} hops. Funds remain in unlabelled addresses or exited via unindexed pools.`
             );
         }
         doc.moveDown(1);
 
-        // Section 2: Risk assessment
-        heading(doc, "2. Risk assessment");
-
-        if (r.riskScore !== undefined && r.riskScore !== null) {
-          doc
-            .font("Helvetica-Bold")
-            .fontSize(10)
-            .fillColor("#111827")
-            .text(`Score ${r.riskScore} of 100 — ${r.riskCategory || "—"}`);
-          doc.moveDown(0.3);
-
-          if (r.flaggedPatterns) {
-            const patterns = r.flaggedPatterns.split("|");
-            for (const p of patterns) {
-              const trimmed = p.trim();
-              if (trimmed) {
-                doc.font("Helvetica").fontSize(10).fillColor("#374151").text(`•  ${trimmed}`);
-              }
+        // 3. Risk Findings
+        heading(doc, "Risk Findings & Indicators");
+        if (r.flaggedPatterns) {
+          const patterns = r.flaggedPatterns.split("|");
+          for (const p of patterns) {
+            const trimmed = p.trim();
+            if (trimmed) {
+              doc.font("Helvetica").fontSize(9).fillColor("#374151").text(`•  ${trimmed}`);
             }
           }
         } else {
-          doc.font("Helvetica").fontSize(10).fillColor("#374151").text("Not scored; the trace did not complete.");
-        }
-
-        if (r.failureReason) {
-          doc.moveDown(0.3);
-          doc.font("Helvetica").fontSize(10).fillColor("#DC2626").text(`Failure reason: ${r.failureReason}`);
+          doc.font("Helvetica").fontSize(9).fillColor("#374151").text("No high-risk patterns detected.");
         }
         doc.moveDown(1);
 
-        // Section 3: Transfer ledger
-        heading(doc, "3. Transfer ledger");
+        // 4. Transaction Timeline & Ledger Table
+        heading(doc, "Transaction Ledger (Top Transfers)");
 
-        // Draw Ledger Table Headers
         const tableCols = [
-          { label: "From", x: 48, width: 140, font: "Courier" },
-          { label: "To", x: 190, width: 140, font: "Courier" },
-          { label: "Amount (ETH)", x: 330, width: 90, font: "Courier" },
-          { label: "Timestamp", x: 430, width: 110, font: "Helvetica" },
+          { label: "From", x: 48, width: 140 },
+          { label: "To", x: 190, width: 140 },
+          { label: "Amount (ETH)", x: 330, width: 90 },
+          { label: "Timestamp", x: 430, width: 110 },
         ];
 
         let tableY = doc.y;
 
-        doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827");
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#111827");
         tableCols.forEach((col) => {
           doc.text(col.label, col.x, tableY, { width: col.width });
         });
 
-        tableY += 16;
+        tableY += 14;
         doc.moveTo(48, tableY).lineTo(540, tableY).strokeColor("#E5E7EB").stroke();
         tableY += 6;
 
@@ -144,16 +142,20 @@ export class ReportService {
             tableY = 48;
           }
 
-          doc.font("Courier").fontSize(9).fillColor("#374151").text(shorten(e.fromAddress), 48, tableY, { width: 140 });
-          doc.font("Courier").fontSize(9).fillColor("#374151").text(shorten(e.toAddress), 190, tableY, { width: 140 });
-          doc.font("Courier").fontSize(9).fillColor("#374151").text(formatAmount(e.amount), 330, tableY, { width: 90 });
+          const fromAddr = e.fromAddress || (e as any).from || "—";
+          const toAddr = e.toAddress || (e as any).to || "—";
+          const ts = e.txTimestamp || (e as any).timestamp || null;
+
+          doc.font("Courier").fontSize(8).fillColor("#374151").text(shorten(fromAddr), 48, tableY, { width: 140 });
+          doc.font("Courier").fontSize(8).fillColor("#374151").text(shorten(toAddr), 190, tableY, { width: 140 });
+          doc.font("Courier").fontSize(8).fillColor("#374151").text(formatAmount(e.amount), 330, tableY, { width: 90 });
           doc
             .font("Helvetica")
-            .fontSize(9)
+            .fontSize(8)
             .fillColor("#374151")
-            .text(e.txTimestamp ? formatDate(e.txTimestamp) : "—", 430, tableY, { width: 110 });
+            .text(ts ? formatDate(ts) : "—", 430, tableY, { width: 110 });
 
-          tableY += 16;
+          tableY += 14;
         });
 
         if ((r.edges || []).length > MAX_LEDGER_ROWS) {
@@ -163,18 +165,20 @@ export class ReportService {
             .fontSize(8)
             .fillColor("#6B7280")
             .text(
-              `Showing the first ${MAX_LEDGER_ROWS} of ${r.edges.length} transfers. Full set available via the case record.`
+              `Showing first ${MAX_LEDGER_ROWS} of ${r.edges.length} transfers. Full set available via investigation case record.`
             );
         }
 
-        // Footer
+        // 5. Evidence Footer
         doc.moveDown(1.5);
+        doc.moveTo(48, doc.y).lineTo(540, doc.y).strokeColor("#E5E7EB").stroke();
+        doc.moveDown(0.5);
         doc
           .font("Helvetica-Oblique")
           .fontSize(8)
           .fillColor("#9CA3AF")
           .text(
-            "On-chain data sourced from Etherscan. Address attributions are derived from public label sets and heuristics; verify each label independently before relying on this report as evidence. Generated by CaseTrace."
+            `Report Hash: ${r.id} | Generated by CaseTrace Forensic Engine | On-chain data sourced from Etherscan V2 API.`
           );
 
         doc.end();

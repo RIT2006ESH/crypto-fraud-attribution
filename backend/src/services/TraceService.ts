@@ -1,17 +1,7 @@
-import { config } from "../config.js";
-import {
-  addressLabelRepository,
-  graphEdgeRepository,
-  graphNodeRepository,
-  traceRequestRepository,
-} from "../db/database.js";
+import { config } from "../config/index.js";
+import { labelRepository, graphRepository, traceRepository } from "../db/repositories/index.js";
 import { EthereumChainClient, ChainClient } from "../chain/EthereumChainClient.js";
-import {
-  ChainTransaction,
-  LabelType,
-  TraceRequest,
-  TraceStatus,
-} from "../types/index.js";
+import { ChainTransaction, LabelType, TraceRequest, TraceStatus } from "../types/index.js";
 
 interface Hop {
   address: string;
@@ -23,6 +13,7 @@ export class TraceService {
   private maxHops: number;
   private maxFanOut: number;
   private maxNodes: number;
+  private maxTxs: number;
 
   constructor() {
     this.clientsByChain = new Map();
@@ -32,19 +23,20 @@ export class TraceService {
     this.maxHops = config.trace.maxHops;
     this.maxFanOut = config.trace.maxFanOut;
     this.maxNodes = config.trace.maxNodes;
+    this.maxTxs = config.trace.maxTxs;
   }
 
   async trace(request: TraceRequest): Promise<TraceRequest> {
     const client = this.clientsByChain.get(request.chain.toLowerCase());
     if (!client) {
-      return traceRequestRepository.save({
+      return traceRepository.save({
         ...request,
         status: TraceStatus.FAILED,
         failureReason: `Unsupported chain: ${request.chain}`,
       });
     }
 
-    let updatedReq = traceRequestRepository.save({
+    let updatedReq = traceRepository.save({
       ...request,
       status: TraceStatus.TRACING,
     });
@@ -57,6 +49,7 @@ export class TraceService {
     const queue: Hop[] = [];
     let maxDepthReached = 0;
     let nodeCount = 0;
+    let txCount = 0;
 
     try {
       const rootLabel = this.persistNode(traceId, root, chain, 0);
@@ -67,45 +60,39 @@ export class TraceService {
         queue.push({ address: root, depth: 0 });
       }
 
-      while (queue.length > 0 && nodeCount < this.maxNodes) {
+      while (queue.length > 0 && nodeCount < this.maxNodes && txCount < this.maxTxs) {
         const hop = queue.shift()!;
-        if (hop.depth >= this.maxHops) {
-          continue;
-        }
+        if (hop.depth >= this.maxHops) continue;
         const nextDepth = hop.depth + 1;
 
         const outgoing = await client.getOutgoingTransactions(hop.address);
-        // Sort descending by numeric ETH value
         outgoing.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
 
         let fanned = 0;
         for (const tx of outgoing) {
-          if (fanned >= this.maxFanOut || nodeCount >= this.maxNodes) {
-            break;
-          }
+          if (fanned >= this.maxFanOut || nodeCount >= this.maxNodes || txCount >= this.maxTxs) break;
           fanned++;
+          txCount++;
 
-          this.persistEdge(traceId, tx); // record edge even to seen nodes (shows convergence)
+          this.persistEdge(traceId, tx);
 
-          const toKey = tx.toAddress.toLowerCase();
-          if (visited.has(toKey)) {
-            continue; // don't duplicate node or re-expand
-          }
+          const toKey = tx.to.toLowerCase();
+          if (visited.has(toKey)) continue;
           visited.add(toKey);
 
-          const label = this.persistNode(traceId, tx.toAddress, chain, nextDepth);
+          const label = this.persistNode(traceId, tx.to, chain, nextDepth);
           nodeCount++;
           maxDepthReached = Math.max(maxDepthReached, nextDepth);
 
           if (!this.isTerminal(label) && nextDepth < this.maxHops) {
-            queue.push({ address: tx.toAddress, depth: nextDepth });
+            queue.push({ address: tx.to, depth: nextDepth });
           }
         }
       }
 
-      console.log(`[TraceService] Trace ${traceId} complete: ${nodeCount} nodes, depth ${maxDepthReached}`);
+      console.log(`[TraceService] Trace ${traceId} complete: ${nodeCount} nodes, ${txCount} txs, depth ${maxDepthReached}`);
 
-      return traceRequestRepository.save({
+      return traceRepository.save({
         ...updatedReq,
         hopsTraced: maxDepthReached,
         status: TraceStatus.COMPLETED,
@@ -113,7 +100,7 @@ export class TraceService {
       });
     } catch (error: any) {
       console.error(`[TraceService] Trace ${traceId} failed at address ${root}:`, error);
-      return traceRequestRepository.save({
+      return traceRepository.save({
         ...updatedReq,
         status: TraceStatus.FAILED,
         failureReason: error.message || String(error),
@@ -123,10 +110,10 @@ export class TraceService {
   }
 
   private persistNode(traceId: string, address: string, chain: string, depth: number): LabelType {
-    const label = addressLabelRepository.findByAddressIgnoreCaseAndChain(address, chain);
+    const label = labelRepository.findByAddressIgnoreCaseAndChain(address, chain);
     const type = label ? label.labelType : LabelType.UNLABELED;
 
-    graphNodeRepository.save({
+    graphRepository.saveNode({
       traceId,
       address,
       hopDepth: depth,
@@ -139,11 +126,11 @@ export class TraceService {
   }
 
   private persistEdge(traceId: string, tx: ChainTransaction): void {
-    graphEdgeRepository.save({
+    graphRepository.saveEdge({
       traceId,
-      fromAddress: tx.fromAddress,
-      toAddress: tx.toAddress,
-      txHash: tx.txHash,
+      fromAddress: tx.from,
+      toAddress: tx.to,
+      txHash: tx.hash,
       amount: tx.amount,
       txTimestamp: tx.timestamp,
     });

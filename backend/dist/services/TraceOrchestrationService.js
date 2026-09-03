@@ -1,7 +1,8 @@
-import { config } from "../config.js";
-import { addressLabelRepository, graphEdgeRepository, graphNodeRepository, traceRequestRepository, } from "../db/database.js";
+import { config } from "../config/index.js";
+import { labelRepository, graphRepository, traceRepository } from "../db/repositories/index.js";
 import { TraceService } from "./TraceService.js";
 import { RiskScoringService } from "./RiskScoringService.js";
+import { graphService } from "./GraphService.js";
 import { LabelType, TraceStatus, } from "../types/index.js";
 export class TraceOrchestrationService {
     traceService;
@@ -22,21 +23,21 @@ export class TraceOrchestrationService {
                 return cached;
             }
         }
-        let request = traceRequestRepository.save({
+        let request = traceRepository.save({
             caseId: input.caseId || null,
             walletAddress: address,
             chain,
             status: TraceStatus.QUEUED,
         });
         request = await this.traceService.trace(request);
-        let nodes = graphNodeRepository.findByTraceId(request.id);
-        let edges = graphEdgeRepository.findByTraceId(request.id);
+        let nodes = graphRepository.findNodesByTraceId(request.id);
+        let edges = graphRepository.findEdgesByTraceId(request.id);
         if (request.status === TraceStatus.COMPLETED) {
             const risk = this.riskScoringService.score(request, nodes, edges);
-            request = traceRequestRepository.save({
+            request = traceRepository.save({
                 ...request,
                 riskScore: risk.score,
-                flaggedPatterns: risk.patterns.join(" | "),
+                flaggedPatterns: risk.reasons.join(" | "),
             });
         }
         const thin = request.status !== TraceStatus.COMPLETED || nodes.length <= 1;
@@ -47,18 +48,20 @@ export class TraceOrchestrationService {
                 return cached;
             }
         }
+        // Populate graph cache
+        graphService.getGraphForTrace(request.id, address, chain);
         return this.assemble(request, nodes, edges, false);
     }
     get(id) {
-        const request = traceRequestRepository.findById(id);
+        const request = traceRepository.findById(id);
         if (!request)
             return null;
-        const nodes = graphNodeRepository.findByTraceId(request.id);
-        const edges = graphEdgeRepository.findByTraceId(request.id);
+        const nodes = graphRepository.findNodesByTraceId(request.id);
+        const edges = graphRepository.findEdgesByTraceId(request.id);
         return this.assemble(request, nodes, edges, false);
     }
     replay(address, chain, excludeId) {
-        const completedRequests = traceRequestRepository.findByWalletAddressIgnoreCaseAndChainAndStatusIn(address, chain, [TraceStatus.COMPLETED]);
+        const completedRequests = traceRepository.findByWalletAddressIgnoreCaseAndChainAndStatusIn(address, chain, [TraceStatus.COMPLETED]);
         const candidates = completedRequests.filter((r) => !excludeId || r.id !== excludeId);
         if (candidates.length === 0)
             return null;
@@ -68,8 +71,8 @@ export class TraceOrchestrationService {
             return timeB - timeA;
         });
         for (const req of candidates) {
-            const nodes = graphNodeRepository.findByTraceId(req.id);
-            const edges = graphEdgeRepository.findByTraceId(req.id);
+            const nodes = graphRepository.findNodesByTraceId(req.id);
+            const edges = graphRepository.findEdgesByTraceId(req.id);
             if (nodes.length > 0) {
                 return this.assemble(req, nodes, edges, true);
             }
@@ -81,26 +84,34 @@ export class TraceOrchestrationService {
         let nearestExchange = null;
         if (exchangeNodes.length > 0) {
             const nearestNode = exchangeNodes.reduce((min, cur) => (cur.hopDepth < min.hopDepth ? cur : min));
-            const label = addressLabelRepository.findByAddressIgnoreCaseAndChain(nearestNode.address, request.chain);
+            const label = labelRepository.findByAddressIgnoreCaseAndChain(nearestNode.address, request.chain);
             nearestExchange = {
                 address: nearestNode.address,
                 entity: label?.entityName || null,
                 hopDepth: nearestNode.hopDepth,
             };
         }
+        const rootLower = request.walletAddress.toLowerCase();
         const nodeDtos = [...nodes]
             .sort((a, b) => a.hopDepth - b.hopDepth)
             .map((n) => ({
+            id: n.address.toLowerCase(),
             address: n.address,
+            type: n.labelType || (n.address.toLowerCase() === rootLower ? "WALLET" : "UNLABELED"),
             hopDepth: n.hopDepth,
+            confidence: n.labelConfidence ?? null,
             labelType: n.labelType || null,
             labelConfidence: n.labelConfidence ?? null,
         }));
         const edgeDtos = edges.map((e) => ({
+            id: `${e.fromAddress.toLowerCase()}-${e.toAddress.toLowerCase()}-${e.txHash}`,
+            from: e.fromAddress.toLowerCase(),
+            to: e.toAddress.toLowerCase(),
             fromAddress: e.fromAddress,
             toAddress: e.toAddress,
             txHash: e.txHash,
             amount: e.amount,
+            timestamp: e.txTimestamp || "",
             txTimestamp: e.txTimestamp || null,
         }));
         return {
@@ -123,3 +134,4 @@ export class TraceOrchestrationService {
         };
     }
 }
+export const traceOrchestrationService = new TraceOrchestrationService();

@@ -33,8 +33,8 @@ export interface TraceRequest {
   hopsTraced?: number | null;
   riskScore?: number | null;
   flaggedPatterns?: string | null;
-  requestedAt: string; // ISO string
-  completedAt?: string | null; // ISO string
+  requestedAt: string;
+  completedAt?: string | null;
   failureReason?: string | null;
 }
 
@@ -54,17 +54,23 @@ export interface GraphEdge {
   fromAddress: string;
   toAddress: string;
   txHash: string;
-  amount: string; // stringified numeric decimal for high precision
-  txTimestamp?: string | null; // ISO string
+  amount: string;
+  txTimestamp?: string | null;
+}
+
+export interface GraphCache {
+  traceId: string;
+  graphJson: string;
+  createdAt: string;
 }
 
 export interface ChainTransaction {
-  txHash: string;
-  fromAddress: string;
-  toAddress: string;
-  amount: string; // native ETH
-  timestamp: string; // ISO string
-  chain: string;
+  hash: string;
+  from: string;
+  to: string;
+  amount: string;
+  timestamp: string;
+  chain?: string;
 }
 
 export interface TraceRequestDto {
@@ -74,17 +80,24 @@ export interface TraceRequestDto {
 }
 
 export interface NodeDto {
+  id: string;
   address: string;
+  type: string;
   hopDepth: number;
+  confidence?: number | null;
   labelType?: string | null;
   labelConfidence?: number | null;
 }
 
 export interface EdgeDto {
-  fromAddress: string;
-  toAddress: string;
+  id: string;
+  from: string;
+  to: string;
   txHash: string;
   amount: string;
+  timestamp: string;
+  fromAddress?: string;
+  toAddress?: string;
   txTimestamp?: string | null;
 }
 
