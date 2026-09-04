@@ -18,7 +18,12 @@ traceRouter.post("/", async (req, res) => {
             res.status(400).json({ error: parseResult.error.errors[0]?.message || "Invalid input" });
             return;
         }
-        const result = await orchestrationService.submit(parseResult.data);
+        const request = parseResult.data;
+        console.log(`[TraceController] Scan started: ${request.walletAddress} on ${(request.chain || "ethereum").toLowerCase()}`);
+        const result = await orchestrationService.submit(request);
+        console.log(`[TraceController] Scan completed: ${result.id} | address=${result.walletAddress} | status=${result.status} | `
+            + `risk=${result.riskScore ?? "n/a"} (${result.riskCategory ?? "n/a"}) | nodes=${result.nodes.length} | `
+            + `edges=${result.edges.length} | cached=${result.servedFromCache}`);
         res.status(200).json(result);
     }
     catch (error) {

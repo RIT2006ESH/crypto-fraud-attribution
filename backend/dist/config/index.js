@@ -5,7 +5,7 @@ export const config = {
     port: parseInt(process.env.PORT || "8080", 10),
     etherscan: {
         baseUrl: process.env.ETHERSCAN_BASE_URL || "https://api.etherscan.io/v2/api",
-        apiKey: process.env.ETHERSCAN_API_KEY || "YourApiKeyToken",
+        apiKey: process.env.ETHERSCAN_API_KEY || "6PHHC1Y9BV6VXGQB9Q8P8VT8J7RH7ATRZE",
     },
     trace: {
         maxHops: parseInt(process.env.TRACE_MAX_HOPS || "4", 10),
