@@ -12,9 +12,30 @@ export function shortenHash(hash?: string | null): string {
 
 export function formatEth(val?: string | number | null): string {
   if (val === null || val === undefined) return "0.00 ETH";
-  const num = typeof val === "number" ? val : parseFloat(val);
+  const num = typeof val === "number" ? val : parseFloat(val as string);
   if (isNaN(num)) return "0.00 ETH";
   return `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ETH`;
+}
+
+/**
+ * Token-aware amount formatter.
+ *  - With symbol:    formatAmount("150.5", "USDT")  → "150.50 USDT"
+ *  - Native ETH:     formatAmount("0.024", null)     → "0.024 ETH"
+ *  - Native TRX:     formatAmount("12.3", "TRX")     → "12.30 TRX"
+ *  - Unknown native: formatAmount("0.01")            → "0.01 ETH"  (fallback)
+ */
+export function formatAmount(val?: string | number | null, tokenSymbol?: string | null): string {
+  if (val === null || val === undefined) return "—";
+  const num = typeof val === "number" ? val : parseFloat(val as string);
+  if (isNaN(num)) return "—";
+  const symbol = tokenSymbol || "ETH";
+  // Stablecoins (USDT/USDC/DAI) → 2 decimal places; others → up to 6
+  const isStable = ["USDT", "USDC", "DAI", "BUSD"].includes(symbol.toUpperCase());
+  const formatted = num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: isStable ? 2 : 6,
+  });
+  return `${formatted} ${symbol}`;
 }
 
 export function formatDate(isoStr?: string | null): string {
@@ -41,3 +62,4 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+

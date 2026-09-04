@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "./components/Header";
 import TraceForm from "./components/TraceForm";
@@ -6,8 +6,8 @@ import FlowMap from "./components/FlowMap";
 import Ledger from "./components/Ledger";
 import Blank from "./components/Blank";
 import { Attribution, CaseFacts, RiskStamp } from "./components/Verdict";
-import { submitTrace } from "./api";
-import type { TraceInput, TraceResult } from "./types";
+import { submitTrace, fetchChains } from "./api";
+import type { ChainInfo, TraceInput, TraceResult } from "./types";
 import { AlertCircle } from "lucide-react";
 
 export default function App() {
@@ -15,11 +15,29 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
+  const [chains, setChains] = useState<ChainInfo[]>([]);
+  /** The chain the last trace was submitted on — drives the Header badge. */
+  const [activeChain, setActiveChain] = useState<string>("all");
+
+  // Fetch supported chains from backend on mount.
+  useEffect(() => {
+    fetchChains()
+      .then(setChains)
+      .catch(() => {
+        // Fallback if backend is unreachable — show built-in chain list.
+        setChains([
+          { id: "ethereum", name: "Ethereum", nativeSymbol: "ETH", tokens: ["USDT", "USDC"] },
+          { id: "tron",     name: "Tron",     nativeSymbol: "TRX", tokens: ["USDT", "USDC"] },
+          { id: "all",      name: "All Chains", nativeSymbol: "", tokens: [], multi: true },
+        ]);
+      });
+  }, []);
 
   async function runTrace(input: TraceInput) {
     setBusy(true);
     setError(null);
     setFocus(null);
+    setActiveChain(input.chain || "all");
     try {
       const res = await submitTrace(input);
       setResult(res);
@@ -35,12 +53,12 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <Header result={result} />
+      <Header result={result} activeChain={activeChain} />
 
       <div className="workspace-layout">
         {/* Left Sidebar Rail */}
         <aside className="sidebar-rail">
-          <TraceForm onSubmit={runTrace} busy={busy} />
+          <TraceForm onSubmit={runTrace} busy={busy} chains={chains} />
 
           <AnimatePresence mode="wait">
             {error && (
@@ -91,7 +109,7 @@ export default function App() {
               </div>
               <div className="legend-item">
                 <span className="legend-swatch exchange" />
-                <span>Exchange</span>
+                <span>Exchange / VASP</span>
               </div>
               <div className="legend-item">
                 <span className="legend-swatch mixer" />
@@ -105,6 +123,14 @@ export default function App() {
                 <span className="legend-swatch unlabelled" />
                 <span>Unlabelled</span>
               </div>
+              <div className="legend-item">
+                <span className="legend-swatch stablecoin-edge" />
+                <span>Stablecoin</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-swatch token-edge" />
+                <span>Token</span>
+              </div>
             </div>
           </div>
 
@@ -112,7 +138,7 @@ export default function App() {
             {result && result.nodes && result.nodes.length > 0 ? (
               <FlowMap result={result} onSelect={setFocus} />
             ) : (
-              <Blank busy={busy} />
+              <Blank busy={busy} chain={activeChain} />
             )}
           </div>
 
@@ -122,3 +148,4 @@ export default function App() {
     </div>
   );
 }
+

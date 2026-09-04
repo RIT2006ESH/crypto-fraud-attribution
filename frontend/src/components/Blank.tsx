@@ -3,9 +3,18 @@ import { Shield, Sparkles } from "lucide-react";
 
 interface Props {
   busy?: boolean;
+  chain?: string;
 }
 
-export default function Blank({ busy }: Props) {
+const CHAIN_NAMES: Record<string, string> = {
+  ethereum: "Ethereum mainnet",
+  tron:     "Tron network",
+  all:      "Ethereum & Tron",
+};
+
+export default function Blank({ busy, chain = "all" }: Props) {
+  const chainName = CHAIN_NAMES[chain] ?? "all chains";
+
   return (
     <div className="empty-canvas">
       <motion.div
@@ -33,7 +42,7 @@ export default function Blank({ busy }: Props) {
         </h3>
         <p className="empty-subtext">
           {busy
-            ? "Gathering block data from Ethereum mainnet and querying attribution registries..."
+            ? `Gathering block data from ${chainName} and querying attribution registries…`
             : "Enter a target wallet address in the investigation console to reconstruct the on-chain money trail."}
         </p>
       </motion.div>
@@ -41,9 +50,10 @@ export default function Blank({ busy }: Props) {
       {!busy && (
         <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--color-cyan)" }}>
           <Sparkles size={14} />
-          <span>Supports Ethereum mainnet transfers & exchange attribution</span>
+          <span>Supports Ethereum + Tron · ETH · TRX · USDT · USDC · ERC-20 · TRC-20 · exchange attribution</span>
         </div>
       )}
     </div>
   );
 }
+
