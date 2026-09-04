@@ -58,21 +58,36 @@ export interface GraphEdge {
   txHash: string;
   amount: string; // stringified numeric decimal for high precision
   txTimestamp?: string | null; // ISO string
+  /** Token symbol for ERC-20/TRC-20 transfers (e.g. "USDT", "USDC"). Null for native transfers. */
+  tokenSymbol?: string | null;
+  /** Contract address of the token. Null for native ETH/TRX. */
+  tokenAddress?: string | null;
+  /** "native" | "erc20" | "trc20" */
+  transferType?: string | null;
 }
 
 export interface ChainTransaction {
   txHash: string;
   fromAddress: string;
   toAddress: string;
-  amount: string; // native ETH, exact decimal string
-  /** Raw wei, kept for exact ordering/comparison. Internal only, not exposed in DTOs. */
-  amountWei?: string;
+  amount: string; // native coin or token amount, exact decimal string
+  /** Raw smallest-unit value (wei / sun), kept for exact ordering. Internal only. */
+  amountRaw?: string;
   timestamp: string; // ISO string
   chain: string;
+  /** Token symbol for ERC-20 / TRC-20 transfers. Undefined for native transfers. */
+  tokenSymbol?: string;
+  /** Contract address of the token. Undefined for native transfers. */
+  tokenAddress?: string;
+  /** Token decimal places. Undefined for native transfers. */
+  tokenDecimals?: number;
+  /** How the value moved: native coin, ERC-20, or TRC-20. Default: "native". */
+  transferType: "native" | "erc20" | "trc20";
 }
 
 export interface TraceRequestDto {
   walletAddress: string;
+  /** Chain id ("ethereum", "tron") or "all" for a parallel multi-chain scan. */
   chain?: string;
   caseId?: string;
 }
@@ -90,6 +105,9 @@ export interface EdgeDto {
   txHash: string;
   amount: string;
   txTimestamp?: string | null;
+  tokenSymbol?: string | null;
+  tokenAddress?: string | null;
+  transferType?: string | null;
 }
 
 export interface ExchangeDto {
@@ -115,4 +133,29 @@ export interface TraceResultDto {
   nearestExchange?: ExchangeDto | null;
   nodes: NodeDto[];
   edges: EdgeDto[];
+}
+
+/** Metadata for a supported chain, returned by GET /api/chains. */
+export interface ChainInfo {
+  id: string;           // "ethereum" | "tron" | "all"
+  name: string;
+  nativeSymbol: string;
+  tokens: string[];     // common tokens tracked on this chain
+  multi?: boolean;      // true only for the "all" meta-entry
+}
+
+/**
+ * Result of a parallel multi-chain scan (chain: "all").
+ * Each chain runs its own BFS independently; results are merged here.
+ */
+export interface MultiChainTraceResultDto {
+  /** Individual trace IDs keyed by chain, for follow-up GET requests. */
+  traceIds: Record<string, string>;
+  /** Per-chain result or an error string if that chain's trace failed. */
+  perChain: Record<string, TraceResultDto | { error: string }>;
+  /** Lowest hop-depth exchange found across all chains. */
+  nearestExchange: ExchangeDto | null;
+  /** Maximum risk score across all chains. */
+  overallRiskScore: number;
+  overallRiskCategory: string;
 }

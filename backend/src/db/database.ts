@@ -64,7 +64,10 @@ export function initDatabase() {
       to_address TEXT NOT NULL,
       tx_hash TEXT NOT NULL,
       amount TEXT,
-      tx_timestamp TEXT
+      tx_timestamp TEXT,
+      token_symbol TEXT,
+      token_address TEXT,
+      transfer_type TEXT NOT NULL DEFAULT 'native'
     );
 
     CREATE INDEX IF NOT EXISTS idx_graph_nodes_trace ON graph_nodes(trace_id);
@@ -78,10 +81,24 @@ export function initDatabase() {
 
 /** Additive migrations for databases created before a column existed. */
 function migrate() {
-  const columns = db.prepare("PRAGMA table_info(address_labels)").all() as Array<{ name: string }>;
-  if (!columns.some((c) => c.name === "updated_at")) {
+  const labelColumns = db.prepare("PRAGMA table_info(address_labels)").all() as Array<{ name: string }>;
+  if (!labelColumns.some((c) => c.name === "updated_at")) {
     db.exec("ALTER TABLE address_labels ADD COLUMN updated_at TEXT");
     console.log("[database] migrated address_labels: added updated_at");
+  }
+
+  const edgeColumns = db.prepare("PRAGMA table_info(graph_edges)").all() as Array<{ name: string }>;
+  if (!edgeColumns.some((c) => c.name === "token_symbol")) {
+    db.exec("ALTER TABLE graph_edges ADD COLUMN token_symbol TEXT");
+    console.log("[database] migrated graph_edges: added token_symbol");
+  }
+  if (!edgeColumns.some((c) => c.name === "token_address")) {
+    db.exec("ALTER TABLE graph_edges ADD COLUMN token_address TEXT");
+    console.log("[database] migrated graph_edges: added token_address");
+  }
+  if (!edgeColumns.some((c) => c.name === "transfer_type")) {
+    db.exec("ALTER TABLE graph_edges ADD COLUMN transfer_type TEXT NOT NULL DEFAULT 'native'");
+    console.log("[database] migrated graph_edges: added transfer_type");
   }
 }
 
@@ -158,6 +175,18 @@ export const traceRequestRepository = {
       WHERE LOWER(wallet_address) = LOWER(?) AND chain = ? AND status IN (${placeholders})
     `);
     return stmt.all(address, chain, ...statuses) as TraceRequest[];
+  },
+
+  findAll(limit = 50, offset = 0): TraceRequest[] {
+    const stmt = db.prepare(`
+      SELECT id, case_id as caseId, wallet_address as walletAddress, chain, status,
+             hops_traced as hopsTraced, risk_score as riskScore, flagged_patterns as flaggedPatterns,
+             requested_at as requestedAt, completed_at as completedAt, failure_reason as failureReason
+      FROM trace_requests
+      ORDER BY requested_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    return stmt.all(limit, offset) as TraceRequest[];
   },
 
   save(req: Partial<TraceRequest> & { walletAddress: string; chain: string; status: TraceStatus }): TraceRequest {
@@ -241,7 +270,9 @@ export const graphNodeRepository = {
 export const graphEdgeRepository = {
   findByTraceId(traceId: string): GraphEdge[] {
     const stmt = db.prepare(`
-      SELECT id, trace_id as traceId, from_address as fromAddress, to_address as toAddress, tx_hash as txHash, amount, tx_timestamp as txTimestamp
+      SELECT id, trace_id as traceId, from_address as fromAddress, to_address as toAddress,
+             tx_hash as txHash, amount, tx_timestamp as txTimestamp,
+             token_symbol as tokenSymbol, token_address as tokenAddress, transfer_type as transferType
       FROM graph_edges WHERE trace_id = ?
     `);
     return stmt.all(traceId) as GraphEdge[];
@@ -250,8 +281,8 @@ export const graphEdgeRepository = {
   save(edge: Omit<GraphEdge, "id"> & { id?: string }): GraphEdge {
     const id = edge.id || crypto.randomUUID();
     const stmt = db.prepare(`
-      INSERT INTO graph_edges (id, trace_id, from_address, to_address, tx_hash, amount, tx_timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO graph_edges (id, trace_id, from_address, to_address, tx_hash, amount, tx_timestamp, token_symbol, token_address, transfer_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
@@ -260,7 +291,10 @@ export const graphEdgeRepository = {
       edge.toAddress,
       edge.txHash,
       edge.amount,
-      edge.txTimestamp || null
+      edge.txTimestamp || null,
+      edge.tokenSymbol || null,
+      edge.tokenAddress || null,
+      edge.transferType || "native"
     );
     return { ...edge, id };
   },

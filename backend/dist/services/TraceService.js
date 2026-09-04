@@ -1,7 +1,9 @@
 import { config } from "../config.js";
 import { graphEdgeRepository, graphNodeRepository, traceRequestRepository } from "../db/database.js";
 import { EthereumChainClient } from "../chain/EthereumChainClient.js";
+import { TronChainClient } from "../chain/TronChainClient.js";
 import { EtherscanApiError } from "../chain/EtherscanClient.js";
+import { TronGridApiError } from "../chain/TronGridClient.js";
 import { LabelService } from "../labels/LabelService.js";
 import { LabelType, TraceStatus } from "../types/index.js";
 /** Cap the extra label lookups one trace may spend, so latency stays bounded. */
@@ -16,6 +18,8 @@ export class TraceService {
         this.clientsByChain = new Map();
         const ethClient = new EthereumChainClient();
         this.clientsByChain.set(ethClient.chain(), ethClient);
+        const tronClient = new TronChainClient();
+        this.clientsByChain.set(tronClient.chain(), tronClient);
         this.labelService = labelService;
         this.maxHops = config.trace.maxHops;
         this.maxFanOut = config.trace.maxFanOut;
@@ -64,7 +68,7 @@ export class TraceService {
                     if (fanned >= this.maxFanOut || nodeCount >= this.maxNodes)
                         break;
                     fanned++;
-                    // Record the edge even to an already-seen node — that convergence is a signal.
+                    // Record the edge even to an already-seen node — convergence is a signal.
                     this.persistEdge(traceId, tx);
                     const toKey = tx.toAddress.toLowerCase();
                     if (visited.has(toKey))
@@ -88,11 +92,7 @@ export class TraceService {
             });
         }
         catch (error) {
-            const reason = error instanceof EtherscanApiError
-                ? error.message
-                : error instanceof Error
-                    ? error.message
-                    : String(error);
+            const reason = this.describeError(error);
             console.error(`[TraceService] trace ${traceId} failed at ${root}: ${reason}`);
             return traceRequestRepository.save({
                 ...updatedReq,
@@ -120,9 +120,21 @@ export class TraceService {
             txHash: tx.txHash,
             amount: tx.amount,
             txTimestamp: tx.timestamp,
+            tokenSymbol: tx.tokenSymbol ?? null,
+            tokenAddress: tx.tokenAddress ?? null,
+            transferType: tx.transferType,
         });
     }
     isTerminal(type) {
         return type === LabelType.EXCHANGE || type === LabelType.MIXER;
+    }
+    describeError(error) {
+        if (error instanceof EtherscanApiError)
+            return error.message;
+        if (error instanceof TronGridApiError)
+            return error.message;
+        if (error instanceof Error)
+            return error.message;
+        return String(error);
     }
 }

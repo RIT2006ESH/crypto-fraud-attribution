@@ -43,6 +43,10 @@ const EXCHANGE_HINTS = [
   "bybit",
   "bitstamp",
   "gemini",
+  "wazirx",
+  "coindcx",
+  "zebpay",
+  "bitbns",
 ];
 const SANCTION_HINTS = ["ofac", "sanction", "sdn", "lazarus", "phish", "hack", "exploit", "heist", "stolen"];
 
@@ -56,11 +60,12 @@ function matches(haystack: string[], needles: string[]): boolean {
  * Order of precedence, first hit wins:
  *   1. SQLite cache (within LABELS_CACHE_TTL_HOURS)
  *   2. curated registry in knownAddresses.ts
- *   3. Etherscan module=nametag (Pro Plus only; auto-skipped on free keys)
- *   4. on-chain heuristics — verified contract name keywords
+ *   3. Etherscan module=nametag (Pro Plus only; auto-skipped on free keys)  — EVM chains only
+ *   4. on-chain heuristics — verified contract name keywords              — EVM chains only
  *
+ * Tron addresses skip steps 3 and 4 because Etherscan has no knowledge of the Tron chain.
  * Every resolution, including UNLABELED, is written back to the cache so a repeat trace
- * of the same subgraph costs no extra Etherscan calls.
+ * of the same subgraph costs no extra API calls.
  */
 export class LabelService {
   private nametagUnavailableLogged = false;
@@ -86,9 +91,11 @@ export class LabelService {
       });
     }
 
-    const shouldEnrich = opts.enrich !== false && config.labels.enrichFromChain;
+    // Etherscan enrichment is only applicable to EVM chains.
+    const isEvm = chain !== "tron";
+    const shouldEnrich = opts.enrich !== false && config.labels.enrichFromChain && isEvm;
     if (!shouldEnrich) {
-      return UNLABELED;
+      return this.persist(address, chain, UNLABELED);
     }
 
     const fromNametag = await this.fromNametag(address);

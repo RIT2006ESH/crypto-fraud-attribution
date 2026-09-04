@@ -2,7 +2,10 @@ import { config } from "../config.js";
 import { addressLabelRepository, graphEdgeRepository, graphNodeRepository, traceRequestRepository, } from "../db/database.js";
 import { TraceService } from "./TraceService.js";
 import { RiskScoringService } from "./RiskScoringService.js";
+import { detectChain } from "../util/address.js";
 import { LabelType, TraceStatus, } from "../types/index.js";
+/** Real chains the system can trace on (excludes the "all" meta-entry). */
+const REAL_CHAINS = ["ethereum", "tron"];
 export class TraceOrchestrationService {
     traceService;
     riskScoringService;
@@ -12,13 +15,25 @@ export class TraceOrchestrationService {
         this.riskScoringService = new RiskScoringService();
         this.preferCached = config.trace.preferCached;
     }
+    /**
+     * Main entry point.  When `chain === "all"` runs a parallel scan across all chains
+     * compatible with the address format; otherwise runs a single-chain trace.
+     */
     async submit(input) {
-        const chain = (input.chain || "").trim() ? input.chain.toLowerCase() : "ethereum";
+        const chain = (input.chain || "").trim().toLowerCase() || "all";
+        if (chain === "all") {
+            return this.submitMultiChain(input);
+        }
+        return this.submitSingleChain({ ...input, chain });
+    }
+    // ── Single-chain trace ────────────────────────────────────────────────────
+    async submitSingleChain(input) {
+        const chain = (input.chain || "ethereum").toLowerCase();
         const address = input.walletAddress.trim();
         if (this.preferCached) {
             const cached = this.replay(address, chain, null);
             if (cached) {
-                console.log(`[OrchestrationService] Serving ${address} from cache (trace.prefer-cached=true)`);
+                console.log(`[OrchestrationService] Serving ${address}/${chain} from cache`);
                 return cached;
             }
         }
@@ -43,12 +58,79 @@ export class TraceOrchestrationService {
         if (thin) {
             const cached = this.replay(address, chain, request.id);
             if (cached) {
-                console.warn(`[OrchestrationService] Live trace of ${address} returned nothing usable; replaying last good trace`);
+                console.warn(`[OrchestrationService] Live trace of ${address}/${chain} returned nothing; replaying last good trace`);
                 return cached;
             }
         }
         return this.assemble(request, nodes, edges, false);
     }
+    // ── Multi-chain parallel scan ─────────────────────────────────────────────
+    /**
+     * Determines which chains are applicable for the given address format, then runs
+     * a trace on each in parallel.  Results are merged into a MultiChainTraceResultDto.
+     *
+     * Address format rules:
+     *   0x…  (EVM)  → Ethereum only (for MVP; finals adds BSC, Polygon, etc.)
+     *   T…   (Tron) → Tron only
+     *   unknown     → all chains attempted, failures suppressed per-chain
+     */
+    async submitMultiChain(input) {
+        const address = input.walletAddress.trim();
+        const detectedChain = detectChain(address);
+        // Determine which chains to actually attempt.
+        let chainsToScan;
+        if (detectedChain) {
+            // Address format clearly belongs to one chain — scan that chain only.
+            // We still return the MultiChainTraceResultDto envelope so the frontend always
+            // gets the same shape regardless of whether chain="all" or chain="ethereum" was sent.
+            chainsToScan = [detectedChain];
+        }
+        else {
+            // Unknown format — try all real chains; each will fail gracefully if unsupported.
+            chainsToScan = [...REAL_CHAINS];
+        }
+        console.log(`[OrchestrationService] multi-chain scan of ${address} on: ${chainsToScan.join(", ")}`);
+        // Fan out — all chains run in parallel.
+        const settled = await Promise.allSettled(chainsToScan.map((chain) => this.submitSingleChain({ ...input, chain })));
+        // Assemble per-chain results.
+        const traceIds = {};
+        const perChain = {};
+        chainsToScan.forEach((chain, i) => {
+            const result = settled[i];
+            if (result.status === "fulfilled") {
+                perChain[chain] = result.value;
+                traceIds[chain] = result.value.id;
+            }
+            else {
+                const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+                console.error(`[OrchestrationService] ${chain} trace failed: ${msg}`);
+                perChain[chain] = { error: msg };
+            }
+        });
+        // Find the shallowest exchange across all chains.
+        let nearestExchange = null;
+        let overallRiskScore = 0;
+        for (const result of Object.values(perChain)) {
+            if ("error" in result)
+                continue;
+            if (result.riskScore != null && result.riskScore > overallRiskScore) {
+                overallRiskScore = result.riskScore;
+            }
+            if (result.nearestExchange) {
+                if (!nearestExchange || result.nearestExchange.hopDepth < nearestExchange.hopDepth) {
+                    nearestExchange = result.nearestExchange;
+                }
+            }
+        }
+        return {
+            traceIds,
+            perChain,
+            nearestExchange,
+            overallRiskScore,
+            overallRiskCategory: RiskScoringService.categorize(overallRiskScore) ?? "LOW",
+        };
+    }
+    // ── Fetch a saved trace ───────────────────────────────────────────────────
     get(id) {
         const request = traceRequestRepository.findById(id);
         if (!request)
@@ -57,6 +139,16 @@ export class TraceOrchestrationService {
         const edges = graphEdgeRepository.findByTraceId(request.id);
         return this.assemble(request, nodes, edges, false);
     }
+    /** List recent traces (for the history panel). */
+    list(limit = 50, offset = 0) {
+        const requests = traceRequestRepository.findAll(limit, offset);
+        return requests.map((req) => {
+            const nodes = graphNodeRepository.findByTraceId(req.id);
+            const edges = graphEdgeRepository.findByTraceId(req.id);
+            return this.assemble(req, nodes, edges, false);
+        });
+    }
+    // ── Internals ─────────────────────────────────────────────────────────────
     replay(address, chain, excludeId) {
         const completedRequests = traceRequestRepository.findByWalletAddressIgnoreCaseAndChainAndStatusIn(address, chain, [TraceStatus.COMPLETED]);
         const candidates = completedRequests.filter((r) => !excludeId || r.id !== excludeId);
@@ -102,6 +194,9 @@ export class TraceOrchestrationService {
             txHash: e.txHash,
             amount: e.amount,
             txTimestamp: e.txTimestamp || null,
+            tokenSymbol: e.tokenSymbol || null,
+            tokenAddress: e.tokenAddress || null,
+            transferType: e.transferType || "native",
         }));
         return {
             id: request.id,

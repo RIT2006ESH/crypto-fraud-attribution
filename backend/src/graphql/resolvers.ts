@@ -35,6 +35,13 @@ function toTrace(dto: TraceResultDto) {
     ...dto,
     flaggedPatterns: splitPatterns(dto.flaggedPatterns),
     reportUrl: `/api/traces/${dto.id}/report`,
+    // Ensure token fields are always present in edges (nullable for native transfers).
+    edges: (dto.edges || []).map((e) => ({
+      ...e,
+      tokenSymbol: e.tokenSymbol ?? null,
+      tokenAddress: e.tokenAddress ?? null,
+      transferType: e.transferType ?? "native",
+    })),
   };
 }
 
@@ -70,6 +77,8 @@ export const resolvers = {
       chainId: config.etherscan.chainId,
       labelRegistrySize: KNOWN_ADDRESSES.length,
     }),
+
+    chains: () => config.supportedChains,
   },
 
   Mutation: {
@@ -81,10 +90,30 @@ export const resolvers = {
       const walletAddress = requireAddress(args.input.walletAddress);
       const result = await ctx.orchestrationService.submit({
         walletAddress,
-        chain: args.input.chain || "ethereum",
+        chain: args.input.chain || "all",
         caseId: args.input.caseId || undefined,
       });
-      return toTrace(result);
+      // submitTrace returns a single-chain TraceResultDto when a specific chain or
+      // auto-detected chain is used.  For "all", the orchestrator fans out but still
+      // returns the first successful chain's result via the Trace type.
+      // (Multi-chain full result shape is only via the REST endpoint for MVP.)
+      const dto = "perChain" in result
+        ? Object.values(result.perChain).find((r): r is TraceResultDto => !("error" in r)) ?? {
+            id: "multi",
+            walletAddress,
+            chain: "all",
+            status: "COMPLETED",
+            requestedAt: new Date().toISOString(),
+            servedFromCache: false,
+            nodes: [],
+            edges: [],
+            flaggedPatterns: null,
+            nearestExchange: result.nearestExchange ?? null,
+            riskScore: result.overallRiskScore,
+            riskCategory: result.overallRiskCategory,
+          } as unknown as TraceResultDto
+        : result as TraceResultDto;
+      return toTrace(dto);
     },
   },
 };

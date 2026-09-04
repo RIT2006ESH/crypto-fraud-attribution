@@ -35,6 +35,17 @@ export const config = {
         txSort: (process.env.ETHERSCAN_TX_SORT || "desc").toLowerCase() === "asc" ? "asc" : "desc",
         timeoutMs: int(process.env.ETHERSCAN_TIMEOUT_MS, 20000),
     },
+    tronGrid: {
+        baseUrl: (process.env.TRONGRID_BASE_URL || "https://api.trongrid.io").replace(/\/$/, ""),
+        // Optional: a TronGrid API key unlocks higher rate limits (https://www.trongrid.io/)
+        apiKey: (process.env.TRONGRID_API_KEY || "").trim(),
+        // Free tier (no key) allows ~15 req/sec. Be conservative to avoid 429s.
+        rateLimitPerSec: int(process.env.TRONGRID_RATE_LIMIT_PER_SEC, 10),
+        maxRetries: int(process.env.TRONGRID_MAX_RETRIES, 3),
+        // How many transactions to fetch per address per page call.
+        txLimit: int(process.env.TRONGRID_TX_LIMIT, 200),
+        timeoutMs: int(process.env.TRONGRID_TIMEOUT_MS, 20000),
+    },
     trace: {
         maxHops: int(process.env.TRACE_MAX_HOPS, 4),
         maxFanOut: int(process.env.TRACE_MAX_FANOUT, 10),
@@ -53,6 +64,31 @@ export const config = {
     dbPath: process.env.DB_PATH
         ? path.resolve(backendRoot, process.env.DB_PATH)
         : path.join(backendRoot, "data", "cryptofraud.sqlite"),
+    /**
+     * Static registry of chains the system supports, returned verbatim by GET /api/chains.
+     * "all" is a meta-entry that triggers a parallel scan across all real chains.
+     */
+    supportedChains: [
+        {
+            id: "ethereum",
+            name: "Ethereum",
+            nativeSymbol: "ETH",
+            tokens: ["USDT", "USDC", "WETH", "DAI"],
+        },
+        {
+            id: "tron",
+            name: "Tron",
+            nativeSymbol: "TRX",
+            tokens: ["USDT", "USDC"],
+        },
+        {
+            id: "all",
+            name: "All Chains",
+            nativeSymbol: "",
+            tokens: [],
+            multi: true,
+        },
+    ],
 };
 /** Fail loudly at boot instead of silently returning empty traces on every request. */
 export function assertConfig() {

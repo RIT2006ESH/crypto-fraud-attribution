@@ -3,7 +3,10 @@ import { z } from "zod";
 import { TraceOrchestrationService } from "../services/TraceOrchestrationService.js";
 import { ReportService } from "../services/ReportService.js";
 import { EtherscanApiError } from "../chain/EtherscanClient.js";
-import { describeAddressProblem, normalizeAddress } from "../util/address.js";
+import { TronGridApiError } from "../chain/TronGridClient.js";
+import { describeAddressProblem, isAddress, normalizeAddress } from "../util/address.js";
+import { config } from "../config.js";
+import { TraceResultDto } from "../types/index.js";
 
 const traceRequestSchema = z.object({
   // Normalise first, then explain any remaining problem in the caller's terms: a pasted
@@ -19,7 +22,12 @@ const traceRequestSchema = z.object({
       const problem = describeAddressProblem(value);
       if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
     }),
-  chain: z.string().trim().optional(),
+  /**
+   * "ethereum" | "tron" | "all"
+   * Defaults to "all" so the frontend can submit without specifying a chain and always
+   * get a multi-chain result. Pass a specific chain to scope to one network.
+   */
+  chain: z.string().trim().optional().default("all"),
   caseId: z.string().trim().optional(),
 });
 
@@ -29,9 +37,34 @@ function fileName(result: { caseId?: string | null; id: string }): string {
   return `attribution-${cleanRef}.pdf`;
 }
 
+function isApiError(error: unknown): boolean {
+  return (
+    (error instanceof EtherscanApiError && (error.kind === "AUTH" || error.kind === "PRO_REQUIRED")) ||
+    (error instanceof TronGridApiError && error.kind === "AUTH")
+  );
+}
+
 export function createTraceRouter(orchestrationService: TraceOrchestrationService): Router {
   const traceRouter = Router();
   const reportService = new ReportService();
+
+  // GET /api/chains — returns the list of supported chains for the frontend chain picker
+  traceRouter.get("/chains", (_req: Request, res: Response) => {
+    res.status(200).json(config.supportedChains);
+  });
+
+  // GET /api/traces — list recent traces (for the history / dashboard panel)
+  traceRouter.get("/", (req: Request, res: Response) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+      const offset = parseInt(String(req.query.offset || "0"), 10) || 0;
+      const traces = orchestrationService.list(limit, offset);
+      res.status(200).json(traces);
+    } catch (error: unknown) {
+      console.error("[TraceController] Error listing traces:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
 
   // POST /api/traces
   traceRouter.post("/", async (req: Request, res: Response) => {
@@ -45,11 +78,10 @@ export function createTraceRouter(orchestrationService: TraceOrchestrationServic
       const result = await orchestrationService.submit(parseResult.data);
       res.status(200).json(result);
     } catch (error: unknown) {
-      // A bad or unentitled Etherscan key is a server configuration problem; say so
-      // instead of returning a generic 500 that looks like a bug in the trace.
-      if (error instanceof EtherscanApiError && (error.kind === "AUTH" || error.kind === "PRO_REQUIRED")) {
-        console.error(`[TraceController] Etherscan configuration problem: ${error.message}`);
-        res.status(502).json({ error: error.message });
+      if (isApiError(error)) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`[TraceController] API configuration problem: ${msg}`);
+        res.status(502).json({ error: msg });
         return;
       }
       console.error("[TraceController] Error submitting trace:", error);
@@ -81,9 +113,9 @@ export function createTraceRouter(orchestrationService: TraceOrchestrationServic
         return;
       }
 
-      const pdfBuffer = await reportService.render(result);
+      const pdfBuffer = await reportService.render(result as TraceResultDto);
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName(result)}"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(result as TraceResultDto)}"`);
       res.send(pdfBuffer);
     } catch (error: unknown) {
       console.error("[TraceController] Error rendering report:", error);

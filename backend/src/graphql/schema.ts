@@ -42,9 +42,15 @@ export const typeDefs = /* GraphQL */ `
     fromAddress: String!
     toAddress: String!
     txHash: String!
-    "Native ETH as an exact decimal string; never a float."
+    "Amount as an exact decimal string (ETH, TRX, USDT, etc.). Never a float."
     amount: String!
     txTimestamp: String
+    "Token symbol for ERC-20/TRC-20 transfers. Null for native ETH/TRX."
+    tokenSymbol: String
+    "Contract address of the transferred token. Null for native transfers."
+    tokenAddress: String
+    "How the value moved: native | erc20 | trc20."
+    transferType: String
   }
 
   "The closest cash-out point found downstream of the reported wallet."
@@ -91,15 +97,29 @@ export const typeDefs = /* GraphQL */ `
   type Health {
     status: String!
     timestamp: String!
-    "False when ETHERSCAN_API_KEY is missing — every trace will come back empty."
+    "False when ETHERSCAN_API_KEY is missing — every ETH trace will come back empty."
     etherscanConfigured: Boolean!
     chainId: Int!
     labelRegistrySize: Int!
   }
 
+  "Metadata for a supported blockchain network."
+  type ChainInfo {
+    "Chain identifier: 'ethereum', 'tron', or 'all' for the multi-chain meta entry."
+    id: String!
+    name: String!
+    "Native coin symbol (ETH, TRX). Empty string for the 'all' meta entry."
+    nativeSymbol: String!
+    "Common token symbols tracked on this chain."
+    tokens: [String!]!
+    "True only for the 'all' meta entry that triggers a parallel multi-chain scan."
+    multi: Boolean
+  }
+
   input TraceInput {
     walletAddress: String!
-    chain: String = "ethereum"
+    "Chain to trace: 'ethereum', 'tron', or 'all' (default) for parallel scan."
+    chain: String = "all"
     caseId: String
   }
 
@@ -109,10 +129,12 @@ export const typeDefs = /* GraphQL */ `
     "Look up what a single address is, without running a trace."
     addressLabel(address: String!, chain: String = "ethereum"): AddressLabel
     health: Health!
+    "List of blockchain networks this system supports, for populating a chain picker."
+    chains: [ChainInfo!]!
   }
 
   type Mutation {
-    "Run a live trace against Etherscan and return the assembled result."
+    "Run a live trace and return the assembled result. Use chain='all' for multi-chain."
     submitTrace(input: TraceInput!): Trace!
   }
 `;
