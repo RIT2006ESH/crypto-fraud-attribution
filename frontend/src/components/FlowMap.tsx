@@ -186,6 +186,10 @@ export default function FlowMap({ result, onSelect }: Props) {
     });
 
     cyRef.current = cy;
+    requestAnimationFrame(() => {
+      cy.resize();
+      cy.fit(undefined, 40);
+    });
   }, [result, onSelect]);
 
   useEffect(() => {
