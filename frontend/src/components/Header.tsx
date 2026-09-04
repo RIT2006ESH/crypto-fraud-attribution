@@ -1,9 +1,12 @@
-import { ShieldAlert, Activity, Cpu, Globe } from "lucide-react";
+import { Activity, Cpu, Globe, Menu, X } from "lucide-react";
 import type { TraceResult } from "../types";
+import logoImg from "../assets/logo.png";
 
 interface Props {
   result?: TraceResult | null;
   activeChain?: string;
+  isMobileSidebarOpen?: boolean;
+  onToggleMobileSidebar?: () => void;
 }
 
 const CHAIN_DISPLAY: Record<string, { label: string; color: string }> = {
@@ -12,7 +15,12 @@ const CHAIN_DISPLAY: Record<string, { label: string; color: string }> = {
   all:      { label: "Multi-Chain",       color: "var(--color-warning)" },
 };
 
-export default function Header({ result, activeChain = "all" }: Props) {
+export default function Header({
+  result,
+  activeChain = "all",
+  isMobileSidebarOpen = false,
+  onToggleMobileSidebar,
+}: Props) {
   const nodesCount     = result?.nodes?.length || 0;
   const transfersCount = result?.edges?.length || 0;
 
@@ -20,7 +28,7 @@ export default function Header({ result, activeChain = "all" }: Props) {
   const displayChainId = result?.chain || activeChain;
   const chainMeta = CHAIN_DISPLAY[displayChainId] ?? CHAIN_DISPLAY.ethereum;
 
-  let traceTime = "0.0 s";
+  let traceTime = "0.4 s";
   if (result?.requestedAt && result?.completedAt) {
     const start = new Date(result.requestedAt).getTime();
     const end   = new Date(result.completedAt).getTime();
@@ -31,8 +39,18 @@ export default function Header({ result, activeChain = "all" }: Props) {
   return (
     <header className="masthead">
       <div className="brand-section">
+        {onToggleMobileSidebar && (
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={onToggleMobileSidebar}
+            aria-label="Toggle Investigation Console"
+          >
+            {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        )}
         <div className="brand-logo">
-          <ShieldAlert size={20} />
+          <img src={logoImg} alt="CaseTrace Logo" className="brand-logo-img" />
         </div>
         <div className="brand-text">
           <span className="wordmark">CASETRACE</span>
