@@ -44,7 +44,7 @@ export function Attribution({ result }: Props) {
       )}
 
       <a
-        href={`/api/traces/${result.id}/report`}
+        href={`${import.meta.env.VITE_API_URL || ''}/api/traces/${result.id}/report`}
         target="_blank"
         rel="noopener noreferrer"
         style={{ textDecoration: "none" }}
