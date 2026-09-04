@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import cytoscape from "cytoscape";
-import dagre from "cytoscape-dagre";
+import dagreImport from "cytoscape-dagre";
+const dagre = (dagreImport as any).default || dagreImport;
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Download } from "lucide-react";
 import type { TraceResult } from "../types";
 import { shortenAddress } from "../format";
