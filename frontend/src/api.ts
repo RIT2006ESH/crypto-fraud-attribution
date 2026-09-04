@@ -1,5 +1,7 @@
 import type { TraceInput, TraceResult } from './types';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 async function unwrap(res: Response): Promise<TraceResult> {
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -14,7 +16,7 @@ async function unwrap(res: Response): Promise<TraceResult> {
 
 export async function submitTrace(input: TraceInput): Promise<TraceResult> {
   return unwrap(
-    await fetch('/api/traces', {
+    await fetch(`${API_BASE}/api/traces`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -23,5 +25,5 @@ export async function submitTrace(input: TraceInput): Promise<TraceResult> {
 }
 
 export async function getTrace(id: string): Promise<TraceResult> {
-  return unwrap(await fetch(`/api/traces/${id}`));
+  return unwrap(await fetch(`${API_BASE}/api/traces/${id}`));
 }
