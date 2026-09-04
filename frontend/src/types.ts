@@ -1,4 +1,5 @@
 export type LabelType = 'EXCHANGE' | 'MIXER' | 'SANCTIONED' | 'UNLABELED';
+export type TransferType = 'native' | 'erc20' | 'trc20';
 
 export interface NodeDto {
   address: string;
@@ -13,6 +14,12 @@ export interface EdgeDto {
   txHash: string;
   amount: string | number;
   txTimestamp: string | null;
+  /** Token symbol for ERC-20/TRC-20 transfers. Null for native ETH/TRX. */
+  tokenSymbol: string | null;
+  /** Contract address of the token. Null for native. */
+  tokenAddress: string | null;
+  /** "native" | "erc20" | "trc20" */
+  transferType: TransferType | null;
 }
 
 export interface ExchangeDto {
@@ -42,6 +49,29 @@ export interface TraceResult {
 
 export interface TraceInput {
   walletAddress: string;
+  /** "ethereum" | "tron" | "all" */
   chain: string;
   caseId?: string;
 }
+
+/** Metadata for a supported blockchain, returned by GET /api/chains. */
+export interface ChainInfo {
+  id: string;
+  name: string;
+  nativeSymbol: string;
+  tokens: string[];
+  multi?: boolean;
+}
+
+/**
+ * Response shape when chain="all" — backend fans out and returns per-chain results.
+ * api.ts normalises this into a plain TraceResult so components don't need to know.
+ */
+export interface MultiChainTraceResult {
+  traceIds: Record<string, string>;
+  perChain: Record<string, TraceResult | { error: string }>;
+  nearestExchange: ExchangeDto | null;
+  overallRiskScore: number;
+  overallRiskCategory: string;
+}
+

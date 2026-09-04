@@ -31,6 +31,16 @@ build/
 
 ### VS Code ###
 .vscode/
-data/
+
+### Local runtime artefacts ###
+# Anchored to the SQLite directory on purpose: a bare "data/" also matches
+# vendored directories such as node_modules/pdfkit/js/data, which silently
+# strips pdfkit's .afm font metrics and breaks PDF report generation.
+/backend/data/
 trace.json
 report.pdf
+
+### Secrets / local env ###
+.env
+.env.*
+!.env.example
