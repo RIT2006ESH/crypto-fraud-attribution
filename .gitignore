@@ -44,3 +44,5 @@ report.pdf
 .env
 .env.*
 !.env.example
+.vercel
+.env*

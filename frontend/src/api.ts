@@ -1,9 +1,11 @@
 import type { ChainInfo, MultiChainTraceResult, TraceInput, TraceResult } from './types';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 // ── Raw fetch wrapper ──────────────────────────────────────────────────────────
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(`${API_BASE}${url}`, init);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(
@@ -76,4 +78,3 @@ export async function getTrace(id: string): Promise<TraceResult> {
 export async function fetchChains(): Promise<ChainInfo[]> {
   return fetchJson<ChainInfo[]>('/api/chains');
 }
-

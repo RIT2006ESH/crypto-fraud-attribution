@@ -906,3 +906,11 @@ body {
   width: 14px;
 }
 
+.graph-viewport {
+  min-height: 500px !important;
+  height: 100% !important;
+}
+
+#cytoscape-container {
+  min-height: 500px !important;
+}
