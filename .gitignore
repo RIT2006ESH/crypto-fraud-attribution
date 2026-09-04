@@ -1,46 +1,31 @@
-HELP.md
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
 target/
+build/
+
+# Maven / Java
+HELP.md
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
+# IDE / Editor files
+.idea/
 *.iws
 *.iml
 *.ipr
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
 .vscode/
+.DS_Store
 
-### Local runtime artefacts ###
-# Anchored to the SQLite directory on purpose: a bare "data/" also matches
-# vendored directories such as node_modules/pdfkit/js/data, which silently
-# strips pdfkit's .afm font metrics and breaks PDF report generation.
+# Local runtime artifacts
 /backend/data/
 trace.json
 report.pdf
 
-### Secrets / local env ###
+# Secrets / local env
 .env
 .env.*
 !.env.example
