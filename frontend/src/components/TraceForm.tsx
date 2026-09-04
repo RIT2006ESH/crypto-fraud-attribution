@@ -192,7 +192,13 @@ export default function TraceForm({ onSubmit, busy, chains = [] }: Props) {
         >
           {busy ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <motion.span
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <Loader2 size={16} />
+              </motion.span>
               <span>Tracing Blockchain...</span>
             </>
           ) : (

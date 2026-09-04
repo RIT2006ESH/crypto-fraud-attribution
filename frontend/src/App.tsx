@@ -16,8 +16,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [chains, setChains] = useState<ChainInfo[]>([]);
-  /** The chain the last trace was submitted on — drives the Header badge. */
   const [activeChain, setActiveChain] = useState<string>("all");
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Fetch supported chains from backend on mount.
   useEffect(() => {
@@ -38,6 +38,7 @@ export default function App() {
     setError(null);
     setFocus(null);
     setActiveChain(input.chain || "all");
+    setIsMobileSidebarOpen(false); // Close mobile drawer on trace submit so user views map
     try {
       const res = await submitTrace(input);
       setResult(res);
@@ -53,11 +54,24 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <Header result={result} activeChain={activeChain} />
+      <Header
+        result={result}
+        activeChain={activeChain}
+        isMobileSidebarOpen={isMobileSidebarOpen}
+        onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+      />
 
       <div className="workspace-layout">
+        {/* Mobile Backdrop Overlay */}
+        {isMobileSidebarOpen && (
+          <div
+            className="sidebar-backdrop"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+        )}
+
         {/* Left Sidebar Rail */}
-        <aside className="sidebar-rail">
+        <aside className={`sidebar-rail ${isMobileSidebarOpen ? "mobile-open" : ""}`}>
           <TraceForm onSubmit={runTrace} busy={busy} chains={chains} />
 
           <AnimatePresence mode="wait">

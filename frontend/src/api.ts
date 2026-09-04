@@ -1,9 +1,14 @@
 import type { ChainInfo, MultiChainTraceResult, TraceInput, TraceResult } from './types';
 
+// ── Base URL ───────────────────────────────────────────────────────────────────
+// In production (Render), VITE_API_URL points to the deployed backend.
+// In local dev, it falls back to '' so Vite's proxy handles /api/* requests.
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+
 // ── Raw fetch wrapper ──────────────────────────────────────────────────────────
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(`${BASE_URL}${url}`, init);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(

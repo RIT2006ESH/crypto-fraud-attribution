@@ -207,7 +207,19 @@ export default function FlowMap({ result, onSelect }: Props) {
 
   useEffect(() => {
     initGraph();
-    return () => { if (cyRef.current) cyRef.current.destroy(); };
+    
+    const handleResize = () => {
+      if (cyRef.current) {
+        cyRef.current.resize();
+        cyRef.current.fit(undefined, 40);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (cyRef.current) cyRef.current.destroy();
+    };
   }, [initGraph]);
 
   const handleZoomIn      = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2);

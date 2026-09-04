@@ -3,7 +3,9 @@ node_modules/
 
 # Production build output
 dist/
-dist-ssr/
+
+# Local SQLite database data directory
+data/
 
 # Secrets and local environment files
 .env
@@ -12,21 +14,10 @@ dist-ssr/
 !.env.example
 
 # Logs
-logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Editor & OS files
-.vscode/*
-!.vscode/extensions.json
-.idea/
+# OS & IDE files
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.vscode/
+.idea/
