@@ -78,3 +78,30 @@ export async function getTrace(id: string): Promise<TraceResult> {
 export async function fetchChains(): Promise<ChainInfo[]> {
   return fetchJson<ChainInfo[]>('/api/chains');
 }
+
+/**
+ * The report URL for a trace.
+ *
+ * The backend renders and serves the report; the frontend never generates one, so the
+ * exported document is always the same artefact the service produced.
+ */
+export function reportUrl(traceId: string): string {
+  return `${API_BASE}/api/traces/${encodeURIComponent(traceId)}/report`;
+}
+
+/** True when the caller has a trace id to build a report URL from. */
+export function hasReport(result: TraceResult | null): boolean {
+  return Boolean(result?.id);
+}
+
+/**
+ * The REST DTO stores findings as one `" | "`-joined string; the GraphQL schema splits it
+ * into a real list. REST callers get the same split here rather than parsing it themselves.
+ */
+export function splitPatterns(patterns: string | null | undefined): string[] {
+  if (!patterns) return [];
+  return patterns
+    .split('|')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}

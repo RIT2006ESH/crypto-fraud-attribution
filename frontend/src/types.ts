@@ -28,6 +28,39 @@ export interface ExchangeDto {
   hopDepth: number;
 }
 
+/** A path through the traced subgraph that the service considers notable. */
+export interface KeyPathDto {
+  pathId: string;
+  addresses: string[];
+  hops: number;
+  significance: string;
+}
+
+/**
+ * The service's own summary of the trace.
+ *
+ * Present on every completed response. It restates the coverage of this trace — which is
+ * useful context beside a risk score, because a score over one node is not comparable to
+ * a score over sixty.
+ */
+export interface FindingsDto {
+  summary: string;
+  targetAddress: string;
+  chain: string;
+  traceDepth: number;
+  nodes: number;
+  transfers: number;
+  entities: string[];
+  keyPaths: KeyPathDto[];
+}
+
+/** Where the data behind a trace came from, and which risk engine scored it. */
+export interface ProvenanceDto {
+  sources: { provider: string }[];
+  fetchedAt: string;
+  riskEngineVersion: string;
+}
+
 export interface TraceResult {
   id: string;
   caseId: string | null;
@@ -37,14 +70,23 @@ export interface TraceResult {
   hopsTraced: number | null;
   riskScore: number | null;
   riskCategory: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null;
+  /**
+   * Human-readable risk signals, joined with " | ". When no weighted rule fires the
+   * backend stores the sentence "No high-risk patterns detected" rather than an empty
+   * string, so consumers must not treat a non-empty value as proof of a finding.
+   */
   flaggedPatterns: string | null;
   requestedAt: string | null;
   completedAt: string | null;
   failureReason: string | null;
+  /** Reasons the trace could not be completed in full, as reported by the service. */
+  limitations: string[] | null;
   servedFromCache: boolean;
   nearestExchange: ExchangeDto | null;
   nodes: NodeDto[];
   edges: EdgeDto[];
+  findings: FindingsDto | null;
+  provenance: ProvenanceDto | null;
 }
 
 export interface TraceInput {

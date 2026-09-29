@@ -1,0 +1,128 @@
+/* ============================================================================
+   CASETRACE — DESIGN TOKENS
+   Single source of truth for colour, type, layout, radius and motion.
+   No raw values are repeated in component styles.
+   ========================================================================== */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --bg-root: #05070b;
+  --bg-surface: #0b111a;
+  --bg-elevated: #111827;
+  --bg-inset: rgba(5, 7, 11, 0.66);
+  --bg-scrim: rgba(5, 7, 11, 0.82);
+  --surface-hairline: rgba(255, 255, 255, 0.08);
+  --surface-hairline-soft: rgba(255, 255, 255, 0.045);
+  --surface-hairline-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --text-primary: #f4f7fb;
+  --text-secondary: #aab6c6;
+  --text-muted: #7c8a9c;
+  --text-faint: #56626f;
+  --text-inverse: #05070b;
+
+  /* ── Brand / marketing accent ─────────────────────────────────────────── */
+  /* One accent, used for CTA, links and active controls only.
+     It never encodes a forensic meaning — see the entity + risk scales below. */
+  --accent-primary: #4cc2ff;
+  --accent-bright: #7ad4ff;
+  --accent-deep: #1c8fd0;
+  --accent-wash: rgba(76, 194, 255, 0.12);
+  --accent-wash-strong: rgba(76, 194, 255, 0.2);
+  --accent-line: rgba(76, 194, 255, 0.38);
+  --accent-glow: rgba(76, 194, 255, 0.22);
+
+  /* ── Risk scale (semantic — never decorative) ─────────────────────────── */
+  --risk-low: #34d399;
+  --risk-medium: #60a5fa;
+  --risk-high: #f59e0b;
+  --risk-critical: #ef4444;
+  --risk-low-wash: rgba(52, 211, 153, 0.12);
+  --risk-medium-wash: rgba(96, 165, 250, 0.12);
+  --risk-high-wash: rgba(245, 158, 11, 0.13);
+  --risk-critical-wash: rgba(239, 68, 68, 0.13);
+
+  /* ── Entity scale (forensic meaning, preserved from the original system) ─ */
+  --entity-target: #f4f7fb;
+  --entity-wallet: #8fa0b4;
+  --entity-exchange: #10b981; /* Exchange / VASP */
+  --entity-mixer: #8b5cf6;    /* Mixer / obfuscation */
+  --entity-sanctioned: #ef4444; /* Sanctioned / critical */
+  --entity-unlabelled: #cbd5e1;
+  --entity-root: #ffffff;
+
+  /* ── Transfer / edge scale ────────────────────────────────────────────── */
+  --edge-native: #475569;
+  --edge-stablecoin: #f59e0b;
+  --edge-token: #60a5fa;
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-brand: 'Space Grotesk', 'Inter', sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --fs-hero: clamp(3.1rem, 8.2vw, 7.5rem);
+  --fs-section: clamp(2.1rem, 4.6vw, 4.25rem);
+  --fs-subhead: clamp(1.45rem, 2.4vw, 2.15rem);
+  --fs-card: clamp(1rem, 1.15vw, 1.1875rem);
+  --fs-lead: clamp(1.0625rem, 0.95rem + 0.4vw, 1.3125rem);
+  --fs-body: 1rem;
+  --fs-small: 0.8125rem;
+  --fs-meta: 0.6875rem;
+  --fs-micro: 0.625rem;
+
+  --lh-hero: 0.94;
+  --lh-section: 1.02;
+  --lh-body: 1.62;
+  --tr-display: -0.035em;
+  --tr-eyebrow: 0.16em;
+
+  /* ── Layout ───────────────────────────────────────────────────────────── */
+  --content-max-width: 1320px;
+  --content-measure: 62ch;
+  --nav-height: 68px;
+  --nav-height-compact: 58px;
+  --console-width: 364px;
+  --inspector-width: 392px;
+  --ledger-height: 272px;
+  --header-height: 62px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --motion-fast: 160ms;
+  --motion-normal: 320ms;
+  --motion-slow: 780ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
+
+  /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-panel: 0 24px 60px -28px rgba(0, 0, 0, 0.9);
+  --shadow-frame: 0 60px 140px -60px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --focus-ring: 0 0 0 2px var(--bg-root), 0 0 0 4px var(--accent-primary);
+
+  /* ── Legacy aliases ───────────────────────────────────────────────────── */
+  /* Kept so existing workspace styles keep resolving while they are refactored. */
+  --color-primary: var(--accent-primary);
+  --color-primary-glow: var(--accent-glow);
+  --color-cyan: var(--accent-primary);
+  --color-cyan-glow: var(--accent-glow);
+  --color-success: var(--entity-exchange);
+  --color-success-glow: rgba(16, 185, 129, 0.25);
+  --color-warning: var(--risk-high);
+  --color-danger: var(--risk-critical);
+  --color-danger-glow: rgba(239, 68, 68, 0.25);
+  --color-purple: var(--entity-mixer);
+  --color-purple-glow: rgba(139, 92, 246, 0.25);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --border-subtle: var(--surface-hairline);
+  --border-glow: var(--accent-line);
+}
