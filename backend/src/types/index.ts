@@ -133,6 +133,30 @@ export interface TraceResultDto {
   nearestExchange?: ExchangeDto | null;
   nodes: NodeDto[];
   edges: EdgeDto[];
+  findings?: {
+    summary: string;
+    targetAddress: string;
+    chain: string;
+    traceDepth: number;
+    nodes: number;
+    transfers: number;
+    entities: any[];
+    keyPaths: any[];
+  };
+  provenance?: {
+    sources: any[];
+    fetchedAt: string;
+    riskEngineVersion: string;
+  };
+  limitations?: string[];
+  attribution?: {
+    primary: any;
+    confidence: {
+      score: number;
+      level: string;
+      reasons: string[];
+    };
+  };
 }
 
 /** Metadata for a supported chain, returned by GET /api/chains. */

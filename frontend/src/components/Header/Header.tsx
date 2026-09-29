@@ -1,5 +1,5 @@
 import { ShieldAlert, Activity, Cpu, Globe } from "lucide-react";
-import type { TraceResult } from "../types";
+import type { TraceResult } from "../../types";
 
 interface Props {
   result?: TraceResult | null;

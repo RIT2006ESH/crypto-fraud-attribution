@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Building2, Download, AlertTriangle, ShieldCheck, Activity } from "lucide-react";
-import type { TraceResult } from "../types";
+import type { TraceResult } from "../../types";
 
 interface Props {
   result: TraceResult;
@@ -76,7 +76,7 @@ export function RiskStamp({ result }: Props) {
   else if (category === "MEDIUM") gaugeColor = "var(--color-primary)";
 
   const patterns = result.flaggedPatterns
-    ? result.flaggedPatterns.split("|").map((p) => p.trim()).filter(Boolean)
+    ? result.flaggedPatterns.split("|").map((p: string) => p.trim()).filter(Boolean)
     : ["No high-risk patterns detected"];
 
   return (
@@ -139,7 +139,7 @@ export function RiskStamp({ result }: Props) {
       </div>
 
       <div className="risk-pattern-list">
-        {patterns.map((p, idx) => (
+        {patterns.map((p: string, idx: number) => (
           <div key={idx} className="pattern-item">
             <AlertTriangle size={12} style={{ color: gaugeColor, flexShrink: 0, marginTop: "2px" }} />
             <span>{p}</span>

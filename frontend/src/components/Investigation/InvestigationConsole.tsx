@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search, CheckCircle2, Loader2, Play, Zap } from "lucide-react";
-import type { ChainInfo, TraceInput } from "../types";
-import { isAddress, detectChain } from "../address";
+import type { ChainInfo, TraceInput } from "../../types";
+import { isAddress, detectChain } from "../../address";
 
 interface Props {
   onSubmit: (input: TraceInput) => void;
@@ -65,6 +65,17 @@ export default function TraceForm({ onSubmit, busy, chains = [] }: Props) {
   // Only switch away from "all" if the user hasn't explicitly picked a chain.
   const detectedChain = walletAddress.trim() ? detectChain(walletAddress.trim()) : null;
   const isValid = isAddress(walletAddress.trim());
+
+  let validationFeedback = "";
+  if (walletAddress.trim().length > 0) {
+    if (!isValid) {
+      validationFeedback = "INVALID ADDRESS";
+    } else if (selectedChain !== "all" && detectedChain && detectedChain !== selectedChain) {
+      validationFeedback = "CHAIN MISMATCH";
+    } else {
+      validationFeedback = "VALID";
+    }
+  }
 
   // Determine which presets to show based on selected chain.
   const presets =
@@ -162,8 +173,19 @@ export default function TraceForm({ onSubmit, busy, chains = [] }: Props) {
               spellCheck={false}
               autoComplete="off"
             />
-            {isValid && <CheckCircle2 size={16} className="valid-indicator" />}
+            {isValid && validationFeedback === "VALID" && <CheckCircle2 size={16} className="valid-indicator" />}
           </div>
+          {validationFeedback && (
+            <div style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              marginTop: '4px',
+              color: validationFeedback === 'VALID' ? 'var(--color-success)' :
+                     validationFeedback === 'CHAIN MISMATCH' ? 'var(--color-warning)' : 'var(--color-danger)'
+            }}>
+              {validationFeedback}
+            </div>
+          )}
         </div>
 
         <div className="form-group">
@@ -186,9 +208,9 @@ export default function TraceForm({ onSubmit, busy, chains = [] }: Props) {
         <motion.button
           type="submit"
           className="btn-investigate"
-          disabled={busy || !isValid}
-          whileHover={{ scale: busy ? 1 : 1.02 }}
-          whileTap={{ scale: busy ? 1 : 0.98 }}
+          disabled={busy || validationFeedback !== "VALID"}
+          whileHover={{ scale: (busy || validationFeedback !== "VALID") ? 1 : 1.02 }}
+          whileTap={{ scale: (busy || validationFeedback !== "VALID") ? 1 : 0.98 }}
         >
           {busy ? (
             <>
