@@ -109,7 +109,7 @@ export class EtherscanClient {
     }
 
     const query = {
-      chainid: config.etherscan.chainId,
+      chainid: params.chainid ?? config.etherscan.chainId,
       ...params,
       apikey: config.etherscan.apiKey,
     };

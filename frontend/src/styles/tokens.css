@@ -11,9 +11,32 @@
   --bg-elevated: #111827;
   --bg-inset: rgba(5, 7, 11, 0.66);
   --bg-scrim: rgba(5, 7, 11, 0.82);
+  --bg-gradient-card: linear-gradient(170deg, #0a1018, #05080e);
   --surface-hairline: rgba(255, 255, 255, 0.08);
   --surface-hairline-soft: rgba(255, 255, 255, 0.045);
   --surface-hairline-strong: rgba(255, 255, 255, 0.16);
+  --surface-hairline-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── Marketing Navigation ─────────────────────────────────────────────── */
+  --nav-bg: rgba(5, 7, 11, 0.90);
+  --nav-border: rgba(255, 255, 255, 0.08);
+  --nav-text: #f8fafc;
+  --nav-muted: #94a3b8;
+  --nav-shadow: 0 8px 30px rgba(0, 0, 0, 0.30);
+  --nav-drawer-bg: rgba(5, 7, 11, 0.96);
+
+  /* ── Secondary Navigation ─────────────────────────────────────────────── */
+  --subnav-bg: rgba(7, 10, 15, 0.90);
+  --subnav-border: rgba(255, 255, 255, 0.08);
+  --subnav-text: #f8fafc;
+  --subnav-muted: #94a3b8;
+  --subnav-active: #4cc2ff;
+  --subnav-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+
+  /* ── Workspace ────────────────────────────────────────────────────────── */
+  --graph-grid: rgba(255, 255, 255, 0.026);
+  --inspector-backdrop: rgba(0, 0, 0, 0.40);
+  --table-header: #0e1620;
 
   /* ── Text ─────────────────────────────────────────────────────────────── */
   --text-primary: #f4f7fb;
@@ -104,6 +127,9 @@
   --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
 
   /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
   --shadow-panel: 0 24px 60px -28px rgba(0, 0, 0, 0.9);
   --shadow-frame: 0 60px 140px -60px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.07);
   --focus-ring: 0 0 0 2px var(--bg-root), 0 0 0 4px var(--accent-primary);
@@ -125,4 +151,87 @@
   --color-text-muted: var(--text-muted);
   --border-subtle: var(--surface-hairline);
   --border-glow: var(--accent-line);
+}
+
+/* ============================================================================
+   LIGHT THEME OVERRIDES
+   ========================================================================== */
+[data-theme="light"] {
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --bg-root: #f5f7fa;
+  --bg-canvas: #eef2f6;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-inset: rgba(255, 255, 255, 0.66);
+  --bg-scrim: rgba(255, 255, 255, 0.82);
+  --bg-gradient-card: linear-gradient(170deg, #ffffff, #f8fafc);
+  
+  --surface-hairline: rgba(15, 23, 42, 0.10);
+  --surface-hairline-soft: rgba(15, 23, 42, 0.05);
+  --surface-hairline-strong: rgba(15, 23, 42, 0.16);
+  --surface-hairline-strong: rgba(15, 23, 42, 0.16);
+
+  /* ── Marketing Navigation ─────────────────────────────────────────────── */
+  --nav-bg: rgba(255, 255, 255, 0.92);
+  --nav-border: rgba(15, 23, 42, 0.10);
+  --nav-text: #0f172a;
+  --nav-muted: #64748b;
+  --nav-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+  --nav-drawer-bg: rgba(255, 255, 255, 0.96);
+
+  /* ── Secondary Navigation ─────────────────────────────────────────────── */
+  --subnav-bg: rgba(255, 255, 255, 0.92);
+  --subnav-border: rgba(15, 23, 42, 0.10);
+  --subnav-text: #0f172a;
+  --subnav-muted: #64748b;
+  --subnav-active: #2563eb;
+  --subnav-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+
+  /* ── Workspace ────────────────────────────────────────────────────────── */
+  --graph-grid: rgba(15, 23, 42, 0.04);
+  --inspector-backdrop: rgba(15, 23, 42, 0.18);
+  --table-header: #f8fafc;
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* ── Brand / marketing accent ─────────────────────────────────────────── */
+  --accent-primary: #2563eb;
+  --accent-bright: #3b82f6;
+  --accent-deep: #1d4ed8;
+  --accent-wash: rgba(37, 99, 235, 0.08);
+  --accent-wash-strong: rgba(37, 99, 235, 0.15);
+  --accent-line: rgba(37, 99, 235, 0.25);
+  --accent-glow: rgba(37, 99, 235, 0.12);
+
+  /* ── Risk scale (Deeper for contrast) ─────────────────────────────────── */
+  --risk-low: #059669;
+  --risk-medium: #2563eb;
+  --risk-high: #d97706;
+  --risk-critical: #dc2626;
+
+  /* ── Entity scale ─────────────────────────────────────────────────────── */
+  --entity-target: #0f172a;
+  --entity-wallet: #475569;
+  --entity-exchange: #059669; 
+  --entity-mixer: #7c3aed;
+  --entity-sanctioned: #dc2626;
+  --entity-unlabelled: #64748b;
+  --entity-root: #000000;
+
+  /* ── Transfer / edge scale ────────────────────────────────────────────── */
+  --edge-native: #94a3b8;
+  --edge-stablecoin: #d97706;
+  --edge-token: #2563eb;
+
+  /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-sm: 0 2px 8px -2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 16px -4px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 24px -8px rgba(15, 23, 42, 0.12);
+  --shadow-panel: 0 12px 36px -12px rgba(15, 23, 42, 0.08);
+  --shadow-frame: 0 24px 60px -20px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.05);
 }

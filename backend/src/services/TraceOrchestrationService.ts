@@ -25,7 +25,7 @@ import {
 } from "../types/index.js";
 
 /** Real chains the system can trace on (excludes the "all" meta-entry). */
-const REAL_CHAINS = ["ethereum", "tron"] as const;
+const REAL_CHAINS = ["ethereum", "polygon", "tron"] as const;
 
 export class TraceOrchestrationService {
   private traceService: TraceService;
@@ -127,7 +127,7 @@ export class TraceOrchestrationService {
    * a trace on each in parallel.  Results are merged into a MultiChainTraceResultDto.
    *
    * Address format rules:
-   *   0x…  (EVM)  → Ethereum only (for MVP; finals adds BSC, Polygon, etc.)
+   *   0x…  (EVM)  → Ethereum or Polygon
    *   T…   (Tron) → Tron only
    *   unknown     → all chains attempted, failures suppressed per-chain
    */
@@ -339,7 +339,7 @@ export class TraceOrchestrationService {
         }] : []
       },
       provenance: {
-        sources: [{ provider: request.chain === "ethereum" ? "ETHERSCAN" : "TRONGRID" }],
+        sources: [{ provider: request.chain === "tron" ? "TRONGRID" : "ETHERSCAN" }],
         fetchedAt: request.requestedAt,
         riskEngineVersion: "1.0.0"
       },
