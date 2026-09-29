@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import BrandMark from '../common/BrandMark';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { useScrolledPast } from '../../hooks/useScrolledPast';
 
 const LINKS = [
@@ -55,6 +56,7 @@ export default function MarketingNav() {
         </nav>
 
         <div className="m-nav__actions">
+          <ThemeToggle />
           <Link to="/request-demo" className="btn btn--quiet btn--sm m-nav__demo">
             Request demo
           </Link>

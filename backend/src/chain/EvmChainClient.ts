@@ -50,9 +50,11 @@ function rawToDecimal(raw: bigint, decimals: number): string {
   return frac ? `${whole}.${frac}` : whole.toString();
 }
 
-export class EthereumChainClient implements ChainClient {
+export class EvmChainClient implements ChainClient {
+  constructor(private chainName: string, private chainId: number) {}
+
   chain(): string {
-    return "ethereum";
+    return this.chainName;
   }
 
   /**
@@ -80,7 +82,7 @@ export class EthereumChainClient implements ChainClient {
       if (err instanceof EtherscanApiError && (err.kind === "AUTH" || err.kind === "PRO_REQUIRED")) {
         throw err;
       }
-      console.warn(`[EthereumChainClient] native ETH fetch failed for ${address}: ${err?.message ?? err}`);
+      console.warn(`[EvmChainClient:${this.chainName}] native fetch failed for ${address}: ${err?.message ?? err}`);
     }
 
     if (tokenResult.status === "fulfilled") {
@@ -90,7 +92,7 @@ export class EthereumChainClient implements ChainClient {
       if (err instanceof EtherscanApiError && (err.kind === "AUTH" || err.kind === "PRO_REQUIRED")) {
         throw err;
       }
-      console.warn(`[EthereumChainClient] ERC-20 fetch failed for ${address}: ${err?.message ?? err}`);
+      console.warn(`[EvmChainClient:${this.chainName}] ERC-20 fetch failed for ${address}: ${err?.message ?? err}`);
     }
 
     // Deduplicate: the same txHash can appear in both lists (e.g. a tx that transfers ETH
@@ -144,7 +146,7 @@ export class EthereumChainClient implements ChainClient {
         amount: weiToEth(wei),
         amountRaw: wei.toString(),
         timestamp,
-        chain: "ethereum",
+        chain: this.chainName,
         transferType: "native",
       });
     }
@@ -186,7 +188,7 @@ export class EthereumChainClient implements ChainClient {
         amount: rawToDecimal(rawAmount, safeDecimals),
         amountRaw: rawAmount.toString(),
         timestamp,
-        chain: "ethereum",
+        chain: this.chainName,
         tokenSymbol: symbol,
         tokenAddress: contractAddress,
         tokenDecimals: safeDecimals,
@@ -209,6 +211,7 @@ export class EthereumChainClient implements ChainClient {
       let batch: unknown[] | null;
       try {
         batch = await etherscanClient.call<unknown[]>({
+          chainid: this.chainId,
           module: "account",
           action,
           address,
@@ -223,7 +226,7 @@ export class EthereumChainClient implements ChainClient {
           throw error;
         }
         const msg = error instanceof Error ? error.message : String(error);
-        console.warn(`[EthereumChainClient] ${address} ${action} page ${page}: ${msg}`);
+        console.warn(`[EvmChainClient:${this.chainName}] ${address} ${action} page ${page}: ${msg}`);
         break;
       }
 

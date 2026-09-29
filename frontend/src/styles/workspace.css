@@ -32,7 +32,7 @@
 
 .sidebar-rail {
   width: var(--console-width);
-  background: rgba(11, 17, 26, 0.9);
+  background: var(--bg-scrim);
   border-right: 1px solid var(--surface-hairline);
   display: flex;
   flex-direction: column;
@@ -57,7 +57,7 @@
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
 .glass-panel {
-  background: rgba(11, 17, 26, 0.72);
+  background: var(--bg-inset);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border: 1px solid var(--surface-hairline);
@@ -742,7 +742,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 10px 18px;
-  background: rgba(11, 17, 26, 0.86);
+  background: var(--bg-scrim);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--surface-hairline);
@@ -836,7 +836,7 @@
   align-items: center;
   gap: 10px 18px;
   padding: 8px 18px;
-  background: rgba(11, 17, 26, 0.6);
+  background: var(--bg-inset);
   border-bottom: 1px solid var(--surface-hairline);
   z-index: 15;
   flex-shrink: 0;
@@ -935,8 +935,8 @@
   flex: 1;
   min-height: 260px;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+    linear-gradient(var(--graph-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--graph-grid) 1px, transparent 1px);
   background-size: 30px 30px;
   -webkit-mask-image: radial-gradient(ellipse 100% 100% at 50% 40%, #000 40%, rgba(0, 0, 0, 0.5));
   mask-image: radial-gradient(ellipse 100% 100% at 50% 40%, #000 40%, rgba(0, 0, 0, 0.5));
@@ -965,7 +965,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  background: rgba(11, 17, 26, 0.88);
+  background: var(--bg-surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--surface-hairline);
@@ -997,7 +997,7 @@
   text-transform: uppercase;
   color: var(--text-faint);
   pointer-events: none;
-  background: rgba(5, 7, 11, 0.6);
+  background: var(--bg-inset);
   padding: 5px 9px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--surface-hairline-soft);
@@ -1009,7 +1009,7 @@
   position: absolute;
   inset: 0;
   z-index: 40;
-  background: rgba(5, 7, 11, 0.5);
+  background: var(--inspector-backdrop);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -1021,13 +1021,13 @@
   bottom: 0;
   width: min(var(--inspector-width), 92vw);
   z-index: 50;
-  background: rgba(9, 14, 21, 0.97);
+  background: var(--nav-drawer-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-left: 1px solid var(--surface-hairline);
   display: flex;
   flex-direction: column;
-  box-shadow: -30px 0 70px -30px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--shadow-panel);
 }
 
 .inspector__head {
@@ -1197,7 +1197,7 @@
 
 .ledger-panel {
   height: var(--ledger-height);
-  background: rgba(11, 17, 26, 0.96);
+  background: var(--nav-drawer-bg);
   border-top: 1px solid var(--surface-hairline);
   display: flex;
   flex-direction: column;
@@ -1298,7 +1298,7 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: #0e1620;
+  background: var(--table-header);
   padding: 7px 14px;
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1430,7 +1430,7 @@
   padding: 16px 20px;
   border: 1px solid var(--surface-hairline);
   border-radius: var(--radius-md);
-  background: rgba(11, 17, 26, 0.7);
+  background: var(--bg-scrim);
   min-width: 300px;
 }
 
@@ -1443,7 +1443,7 @@
   gap: 18px;
   padding: 0 18px;
   height: var(--header-height);
-  background: rgba(9, 14, 21, 0.94);
+  background: var(--nav-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--surface-hairline);
@@ -1706,7 +1706,7 @@
     bottom: 0;
     z-index: 60;
     width: min(var(--console-width), 90vw);
-    box-shadow: 24px 0 60px -30px rgba(0, 0, 0, 0.9);
+    box-shadow: var(--shadow-panel);
   }
 
   .sidebar-rail--hidden {

@@ -1,10 +1,12 @@
-import { useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape';
 // Registers the `dagre` layout name with Cytoscape. Its options are not part of
 // Cytoscape's own LayoutOptions union, so the layout object below is declared
 // separately and cast at the call sites.
 import dagre from 'cytoscape-dagre';
 import type { GraphView } from '../../lib/graph';
+import { getGraphStyle } from '../../lib/graph/style';
+import { useTheme } from '../../lib/theme';
 
 // Registers the `dagre` layout name on the Cytoscape build we imported above. Without
 // this, `layout: { name: 'dagre' }` throws at runtime.
@@ -31,11 +33,10 @@ const layoutOptions = () => LAYOUT as unknown as cytoscape.LayoutOptions;
 const LAYOUT = {
   name: 'dagre',
   rankDir: 'LR',
-  nodeSep: 48,
-  rankSep: 138,
-  edgeSep: 20,
+  nodeSep: 60,
+  rankSep: 200,
+  edgeSep: 30,
   ranker: 'network-simplex',
-  align: 'UL',
   animate: false,
 } as const;
 
@@ -80,8 +81,26 @@ export function GraphCanvas({
   focusId,
   ref,
 }: Props) {
+  const { theme } = useTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          setIsReady(true);
+        }
+      }
+    });
+
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   /* Keeping the latest callback in a ref means the Cytoscape instance is created once
      per trace rather than once per parent render. Written in an effect rather than
@@ -126,14 +145,14 @@ export function GraphCanvas({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    if (!host || !isReady) return;
 
     const cy = cytoscape({
       container: host,
       elements,
-      layout: layoutOptions(),
+      style: getGraphStyle(theme === 'dark' ? 'dark' : 'light'),
       wheelSensitivity: 0.22,
-      minZoom: 0.2,
+      minZoom: 0.1,
       maxZoom: 2.6,
       boxSelectionEnabled: false,
     });
@@ -142,17 +161,45 @@ export function GraphCanvas({
 
     cy.on('tap', 'node', (event) => onSelectRef.current(event.target.id(), 'node'));
     cy.on('tap', 'edge', (event) => onSelectRef.current(event.target.id(), 'edge'));
-    // Tapping the background clears the selection instead of doing nothing, which is
-    // what an investigator expects from a map they have just clicked around on.
     cy.on('tap', (event) => {
       if (event.target === cy) onSelectRef.current('', 'node');
     });
 
+    let layoutCompleted = false;
+
+    // The layout is run manually so we can wait for layoutstop before fitting
+    const layout = cy.layout(layoutOptions());
+    layout.on('layoutstop', () => {
+      layoutCompleted = true;
+      cy.resize();
+      // Calculate responsive padding
+      const pad = Math.min(Math.max(40, host.clientWidth * 0.05), 100);
+      cy.fit(undefined, pad);
+    });
+    layout.run();
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          cy.resize();
+        }
+      }
+    });
+    resizeObserver.observe(host);
+
     return () => {
+      resizeObserver.disconnect();
       cy.destroy();
       cyRef.current = null;
     };
-  }, [elements]);
+  }, [elements, isReady]); // Intentionally not depending on theme here so we don't recreate the graph on theme toggle
+
+  // Update Cytoscape style when theme changes without destroying the graph
+  useEffect(() => {
+    if (cyRef.current) {
+      cyRef.current.style().fromJson(getGraphStyle(theme === 'dark' ? 'dark' : 'light')).update();
+    }
+  }, [theme]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -197,8 +244,13 @@ export function GraphCanvas({
         node.style('display', hidden?.has(node.id()) ? 'none' : 'element');
       });
     });
-    cy.layout(layoutOptions()).run();
-    cy.fit(undefined, 48);
+    const layout = cy.layout(layoutOptions());
+    layout.on('layoutstop', () => {
+      cy.resize();
+      const pad = Math.min(Math.max(40, hostRef.current?.clientWidth! * 0.05), 100);
+      cy.fit(undefined, pad);
+    });
+    layout.run();
   }, [hidden]);
 
   useEffect(() => {

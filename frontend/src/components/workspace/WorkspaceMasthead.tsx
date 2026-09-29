@@ -4,6 +4,7 @@ import BrandMark from '../common/BrandMark';
 import { chainMeta } from '../../lib/chains';
 import { shortenAddress } from '../../format';
 import type { TraceResult } from '../../types';
+import { ThemeToggle } from '../common/ThemeToggle';
 
 interface Props {
   statusClass: string;
@@ -65,6 +66,7 @@ export default function WorkspaceMasthead({
           {statusLabel === 'Running' ? <span className="pulse-dot" aria-hidden /> : null}
           {statusLabel}
         </span>
+        <ThemeToggle />
         <Link to="/" className="btn btn--quiet btn--sm">
           Site
         </Link>

@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronLeft, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
-import { LEDGER_PAGE_SIZE } from '../../state/investigationReducer';
 import { entityMeta } from '../../lib/entities';
 import { displaySymbol, symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
 import type { GraphView, Selection } from '../../lib/graph';
@@ -11,9 +11,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
  * The transfer ledger.
  *
  * Every transfer in the trace, filtered and searched, with the currently selected
- * address scoped in. Selection and search are independent controls on purpose: an
- * investigator narrowing a case by hash and an investigator following one address are
- * different jobs, and conflating them loses one of them.
+ * address scoped in. Selection and search are independent controls on purpose.
  */
 
 interface Props {
@@ -21,7 +19,7 @@ interface Props {
   selection: Selection | null;
   search: string;
   onSearch: (value: string) => void;
-  page: number;
+  page: number; // Keeping for compatibility with parent components, though unused by virtualizer
   onPage: (page: number) => void;
   onSelect: (id: string, kind: 'node' | 'edge') => void;
   onClearSelection: () => void;
@@ -32,13 +30,9 @@ export default function LedgerPanel({
   selection,
   search,
   onSearch,
-  page,
-  onPage,
   onSelect,
   onClearSelection,
 }: Props) {
-  /* Debounced so a fast typist is not re-filtering 200 rows on every keystroke, while
-     the input itself stays fully controlled and responsive. */
   const debounced = useDebouncedValue(search, 180);
 
   const scoped = useMemo(() => {
@@ -64,11 +58,23 @@ export default function LedgerPanel({
     });
   }, [scoped, debounced]);
 
-  const pages = Math.max(1, Math.ceil(filtered.length / LEDGER_PAGE_SIZE));
-  const current = Math.min(page, pages - 1);
-  const rows = filtered.slice(current * LEDGER_PAGE_SIZE, (current + 1) * LEDGER_PAGE_SIZE);
-
   const selectedAddress = selection?.kind === 'node' ? selection.address.toLowerCase() : null;
+
+  // Virtualization setup
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 29, // Approximate row height
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+      : 0;
 
   return (
     <section className="ledger-panel" aria-label="Transfer ledger">
@@ -117,7 +123,7 @@ export default function LedgerPanel({
         </div>
       </div>
 
-      <div className="ledger-table-wrapper">
+      <div className="ledger-table-wrapper" ref={parentRef}>
         <table className="ledger-table">
           <thead>
             <tr>
@@ -129,7 +135,7 @@ export default function LedgerPanel({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {filtered.length === 0 ? (
               <tr>
                 <td colSpan={5}>
                   <p className="ledger-empty">
@@ -140,93 +146,80 @@ export default function LedgerPanel({
                 </td>
               </tr>
             ) : (
-              rows.map((edge) => {
-                const fromMeta = entityMeta(view.byAddress.get(edge.source)?.labelType ?? null);
-                const toMeta = entityMeta(view.byAddress.get(edge.target)?.labelType ?? null);
-                const isSelected = selection?.kind === 'edge' && selection.id === edge.id;
-                const advisory = symbolAdvisory(edge.edge.tokenSymbol);
-                const symbol = displaySymbol(edge.edge.tokenSymbol);
-                return (
-                  <tr
-                    key={edge.id}
-                    className={`ledger-row${
-                      isSelected ? ' ledger-row--selected' : ''
-                    }${
-                      selectedAddress && (edge.source === selectedAddress || edge.target === selectedAddress)
-                        ? ' ledger-row--focused'
-                        : ''
-                    }`}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isSelected}
-                    aria-label={`Select transfer of ${formatQuantity(edge.amount)} ${symbol} from ${shortenAddress(edge.source)} to ${shortenAddress(edge.target)}`}
-                    onClick={() => onSelect(edge.id, 'edge')}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      onSelect(edge.id, 'edge');
-                    }}
-                  >
-                    <td>
-                      <span className="token-chip" style={{ color: fromMeta.color }}>
-                        {fromMeta.glyph} {shortenAddress(edge.source)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="token-chip" style={{ color: toMeta.color }}>
-                        {toMeta.glyph} {shortenAddress(edge.target)}
-                      </span>
-                    </td>
-                    <td className="amount-cell">{formatQuantity(edge.amount)}</td>
-                    <td>
-                      <span
-                        className="token-chip"
-                        title={advisory ? symbolAdvisoryText(advisory) : undefined}
-                      >
-                        {advisory ? (
-                          <TriangleAlert size={10} aria-hidden className="token-chip__warn" />
-                        ) : null}
-                        {displaySymbol(edge.edge.tokenSymbol)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="tagline">{shortenHash(edge.edge.txHash)}</span>
-                    </td>
+              <>
+                {paddingTop > 0 && (
+                  <tr>
+                    <td style={{ height: `${paddingTop}px` }} colSpan={5} />
                   </tr>
-                );
-              })
+                )}
+                {virtualItems.map((virtualRow) => {
+                  const edge = filtered[virtualRow.index];
+                  const fromMeta = entityMeta(view.byAddress.get(edge.source)?.labelType ?? null);
+                  const toMeta = entityMeta(view.byAddress.get(edge.target)?.labelType ?? null);
+                  const isSelected = selection?.kind === 'edge' && selection.id === edge.id;
+                  const advisory = symbolAdvisory(edge.edge.tokenSymbol);
+                  const symbol = displaySymbol(edge.edge.tokenSymbol);
+                  return (
+                    <tr
+                      key={edge.id}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      className={`ledger-row${
+                        isSelected ? ' ledger-row--selected' : ''
+                      }${
+                        selectedAddress && (edge.source === selectedAddress || edge.target === selectedAddress)
+                          ? ' ledger-row--focused'
+                          : ''
+                      }`}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      aria-label={`Select transfer of ${formatQuantity(edge.amount)} ${symbol} from ${shortenAddress(edge.source)} to ${shortenAddress(edge.target)}`}
+                      onClick={() => onSelect(edge.id, 'edge')}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        onSelect(edge.id, 'edge');
+                      }}
+                    >
+                      <td>
+                        <span className="token-chip" style={{ color: fromMeta.color }}>
+                          {fromMeta.glyph} {shortenAddress(edge.source)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="token-chip" style={{ color: toMeta.color }}>
+                          {toMeta.glyph} {shortenAddress(edge.target)}
+                        </span>
+                      </td>
+                      <td className="amount-cell">{formatQuantity(edge.amount)}</td>
+                      <td>
+                        <span
+                          className="token-chip"
+                          title={advisory ? symbolAdvisoryText(advisory) : undefined}
+                        >
+                          {advisory ? (
+                            <TriangleAlert size={10} aria-hidden className="token-chip__warn" />
+                          ) : null}
+                          {displaySymbol(edge.edge.tokenSymbol)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="tagline">{shortenHash(edge.edge.txHash)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td style={{ height: `${paddingBottom}px` }} colSpan={5} />
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>
       </div>
-
-      {pages > 1 ? (
-        <div className="ledger-pager">
-          <span className="tagline">
-            Page {current + 1} of {pages}
-          </span>
-          <div className="ledger-pager__buttons">
-            <button
-              type="button"
-              className="ctrl-btn"
-              onClick={() => onPage(Math.max(0, current - 1))}
-              disabled={current === 0}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="ctrl-btn"
-              onClick={() => onPage(Math.min(pages - 1, current + 1))}
-              disabled={current >= pages - 1}
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} aria-hidden />
-            </button>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

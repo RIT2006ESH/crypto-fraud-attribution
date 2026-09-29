@@ -60,6 +60,7 @@ export interface GraphEdgeView {
   fromLabel: LabelType | null;
   toLabel: LabelType | null;
   amount: number;
+  transferCount: number;
   isStable: boolean;
   isOnPathRisk: boolean;
 }
@@ -73,7 +74,8 @@ function numericAmount(value: string | number): number {
 
 /** Stable key for an edge — mirrors the id assigned in FlowMap. */
 export function edgeId(edge: EdgeDto): string {
-  return `${edge.fromAddress.toLowerCase()}--${edge.toAddress.toLowerCase()}--${edge.txHash.toLowerCase()}`;
+  // We use from--to--asset for aggregation
+  return `${edge.fromAddress.toLowerCase()}--${edge.toAddress.toLowerCase()}--${(edge.tokenSymbol || 'NATIVE').toUpperCase()}`;
 }
 
 /**
@@ -116,24 +118,35 @@ export function buildGraphView(result: TraceResult) {
     byAddress.set(id, view);
   }
 
+  const aggregatedEdges = new Map<string, GraphEdgeView>();
+
   for (const edge of result.edges ?? []) {
     const source = edge.fromAddress.toLowerCase();
     const target = edge.toAddress.toLowerCase();
     const amount = numericAmount(edge.amount);
     const symbol = (edge.tokenSymbol || '').toUpperCase();
+    const aggId = edgeId(edge);
 
-    edges.push({
-      edge,
-      id: edgeId(edge),
-      source,
-      target,
-      fromLabel: byAddress.get(source)?.labelType ?? null,
-      toLabel: byAddress.get(target)?.labelType ?? null,
-      amount,
-      isStable: STABLE_ASSETS.has(symbol),
-      isOnPathRisk:
-        byAddress.get(target)?.labelType === 'MIXER' || byAddress.get(target)?.labelType === 'SANCTIONED',
-    });
+    let view = aggregatedEdges.get(aggId);
+    if (!view) {
+      view = {
+        edge,
+        id: aggId,
+        source,
+        target,
+        fromLabel: byAddress.get(source)?.labelType ?? null,
+        toLabel: byAddress.get(target)?.labelType ?? null,
+        amount: 0,
+        transferCount: 0,
+        isStable: STABLE_ASSETS.has(symbol),
+        isOnPathRisk:
+          byAddress.get(target)?.labelType === 'MIXER' || byAddress.get(target)?.labelType === 'SANCTIONED',
+      };
+      aggregatedEdges.set(aggId, view);
+      edges.push(view);
+    }
+    view.amount += amount;
+    view.transferCount += 1;
 
     bump(edge.fromAddress, 'out', amount);
     bump(edge.toAddress, 'in', amount);

@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { graphEdgeRepository, graphNodeRepository, traceRequestRepository } from "../db/database.js";
-import { EthereumChainClient, ChainClient } from "../chain/EthereumChainClient.js";
+import { EvmChainClient, ChainClient } from "../chain/EvmChainClient.js";
 import { TronChainClient } from "../chain/TronChainClient.js";
 import { EtherscanApiError } from "../chain/EtherscanClient.js";
 import { TronGridApiError } from "../chain/TronGridClient.js";
@@ -25,8 +25,11 @@ export class TraceService {
   constructor(labelService: LabelService = new LabelService()) {
     this.clientsByChain = new Map();
 
-    const ethClient = new EthereumChainClient();
+    const ethClient = new EvmChainClient("ethereum", config.etherscan.chainId);
     this.clientsByChain.set(ethClient.chain(), ethClient);
+
+    const polygonClient = new EvmChainClient("polygon", 137);
+    this.clientsByChain.set(polygonClient.chain(), polygonClient);
 
     const tronClient = new TronChainClient();
     this.clientsByChain.set(tronClient.chain(), tronClient);
