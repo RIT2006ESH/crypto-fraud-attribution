@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Search, Copy, Check, Filter } from "lucide-react";
-import type { TraceResult } from "../types";
-import { formatAmount, formatDate, shortenAddress, shortenHash, copyToClipboard } from "../format";
+import type { TraceResult } from "../../types";
+import { formatAmount, formatDate, shortenAddress, shortenHash, copyToClipboard } from "../../format";
 
 interface Props {
   result: TraceResult;
@@ -59,7 +59,7 @@ export default function Ledger({ result, focus, onClearFocus }: Props) {
   };
 
   const filteredEdges = useMemo(() => {
-    return edges.filter((e) => {
+    return edges.filter((e: any) => {
       const matchSearch =
         !searchTerm.trim() ||
         e.fromAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -132,7 +132,7 @@ export default function Ledger({ result, focus, onClearFocus }: Props) {
           </thead>
           <tbody>
             {filteredEdges.length > 0 ? (
-              filteredEdges.map((e, idx) => {
+              filteredEdges.map((e: any, idx: number) => {
                 const isFocused =
                   focus &&
                   (e.fromAddress.toLowerCase() === focus.toLowerCase() ||

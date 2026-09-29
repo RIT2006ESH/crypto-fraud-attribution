@@ -75,3 +75,53 @@ export interface MultiChainTraceResult {
   overallRiskCategory: string;
 }
 
+export type InvestigationStatus = 
+  | "idle"
+  | "validating"
+  | "queued"
+  | "running"
+  | "processing"
+  | "completed"
+  | "partial"
+  | "failed";
+
+export interface Attribution {
+  entity: string;
+  type: string;
+  confidence: number;
+  confidenceCategory: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  reasoning: string[];
+}
+
+export interface Finding {
+  id: string;
+  title: string;
+  hopDepth: number;
+  description: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+}
+
+export interface InvestigationState {
+  request: {
+    walletAddress: string;
+    chain: string;
+    caseReference?: string;
+  };
+  execution: {
+    status: InvestigationStatus;
+    progress: number;
+    currentStage: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  };
+  result: TraceResult | null;
+  focus: {
+    nodeId: string | null;
+    edgeId: string | null;
+    address: string | null;
+    txHash: string | null;
+  };
+  ui: {
+    activeView: 'DEFAULT' | 'RISK_FOCUS' | 'ENTITY_FOCUS' | 'PATH_FOCUS';
+  };
+}

@@ -3,8 +3,8 @@ import cytoscape from "cytoscape";
 import dagreImport from "cytoscape-dagre";
 const dagre = (dagreImport as any).default || dagreImport;
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Download } from "lucide-react";
-import type { TraceResult } from "../types";
-import { shortenAddress, formatAmount } from "../format";
+import type { TraceResult } from "../../types";
+import { shortenAddress, formatAmount } from "../../format";
 
 cytoscape.use(dagre);
 
@@ -34,7 +34,7 @@ export default function FlowMap({ result, onSelect }: Props) {
     const elements: cytoscape.ElementDefinition[] = [];
 
     // ── Nodes ────────────────────────────────────────────────────────────────
-    result.nodes.forEach((n) => {
+    result.nodes.forEach((n: any) => {
       const isRoot  = n.address.toLowerCase() === rootAddress;
       const type    = n.labelType || "UNLABELED";
       const short   = shortenAddress(n.address);
@@ -55,7 +55,7 @@ export default function FlowMap({ result, onSelect }: Props) {
     });
 
     // ── Edges ────────────────────────────────────────────────────────────────
-    result.edges.forEach((e) => {
+    result.edges.forEach((e: any) => {
       const transferType = e.transferType ?? "native";
       const color        = edgeColor(transferType);
       const amtLabel     = formatAmount(e.amount, e.tokenSymbol);

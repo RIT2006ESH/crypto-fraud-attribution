@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { addressLabelRepository, graphEdgeRepository, graphNodeRepository, traceRequestRepository, } from "../db/database.js";
+import { addressLabelRepository, graphEdgeRepository, graphNodeRepository, traceRequestRepository, auditRepository, } from "../db/database.js";
 import { TraceService } from "./TraceService.js";
 import { RiskScoringService } from "./RiskScoringService.js";
 import { detectChain } from "../util/address.js";
@@ -43,6 +43,12 @@ export class TraceOrchestrationService {
             chain,
             status: TraceStatus.QUEUED,
         });
+        auditRepository.save({
+            caseId: request.caseId,
+            investigationId: request.id,
+            eventType: "INVESTIGATION_STARTED",
+            actorType: "SYSTEM"
+        });
         request = await this.traceService.trace(request);
         let nodes = graphNodeRepository.findByTraceId(request.id);
         let edges = graphEdgeRepository.findByTraceId(request.id);
@@ -52,6 +58,21 @@ export class TraceOrchestrationService {
                 ...request,
                 riskScore: risk.score,
                 flaggedPatterns: risk.patterns.join(" | "),
+            });
+            auditRepository.save({
+                caseId: request.caseId,
+                investigationId: request.id,
+                eventType: "INVESTIGATION_COMPLETED",
+                actorType: "SYSTEM",
+                metadataJson: JSON.stringify({ riskScore: risk.score })
+            });
+        }
+        else {
+            auditRepository.save({
+                caseId: request.caseId,
+                investigationId: request.id,
+                eventType: "INVESTIGATION_FAILED",
+                actorType: "SYSTEM"
             });
         }
         const thin = request.status !== TraceStatus.COMPLETED || nodes.length <= 1;
@@ -198,6 +219,25 @@ export class TraceOrchestrationService {
             tokenAddress: e.tokenAddress || null,
             transferType: e.transferType || "native",
         }));
+        const entities = exchangeNodes.map(n => ({
+            address: n.address,
+            hopDepth: n.hopDepth,
+            labelType: n.labelType,
+            confidence: n.labelConfidence
+        }));
+        const limitations = [];
+        if (nodes.length >= config.trace.maxNodes) {
+            limitations.push("Trace stopped at configured node limit");
+        }
+        let attributionConfidence = 0;
+        let attributionLevel = "UNKNOWN";
+        const attributionReasons = [];
+        if (nearestExchange) {
+            attributionConfidence = 95;
+            attributionLevel = "HIGH";
+            attributionReasons.push("Identified direct link to known exchange entity");
+        }
+        const maxDepth = nodes.reduce((max, n) => Math.max(max, n.hopDepth || 0), 0);
         return {
             id: request.id,
             caseId: request.caseId || null,
@@ -215,6 +255,35 @@ export class TraceOrchestrationService {
             nearestExchange,
             nodes: nodeDtos,
             edges: edgeDtos,
+            findings: {
+                summary: `Trace identified ${nodes.length} nodes and ${edges.length} transfers.`,
+                targetAddress: request.walletAddress,
+                chain: request.chain,
+                traceDepth: maxDepth,
+                nodes: nodes.length,
+                transfers: edges.length,
+                entities,
+                keyPaths: nearestExchange ? [{
+                        pathId: `path-${nearestExchange.address}`,
+                        addresses: [request.walletAddress, nearestExchange.address],
+                        hops: nearestExchange.hopDepth,
+                        significance: "Path to nearest cashout point"
+                    }] : []
+            },
+            provenance: {
+                sources: [{ provider: request.chain === "ethereum" ? "ETHERSCAN" : "TRONGRID" }],
+                fetchedAt: request.requestedAt,
+                riskEngineVersion: "1.0.0"
+            },
+            limitations,
+            attribution: nearestExchange ? {
+                primary: nearestExchange,
+                confidence: {
+                    score: attributionConfidence,
+                    level: attributionLevel,
+                    reasons: attributionReasons
+                }
+            } : undefined
         };
     }
 }

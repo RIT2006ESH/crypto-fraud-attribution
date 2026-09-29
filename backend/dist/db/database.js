@@ -63,6 +63,29 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_graph_edges_trace ON graph_edges(trace_id);
     CREATE INDEX IF NOT EXISTS idx_trace_requests_wallet ON trace_requests(wallet_address, chain, status);
     CREATE INDEX IF NOT EXISTS idx_address_labels_lookup ON address_labels(chain, address);
+
+    CREATE TABLE IF NOT EXISTS cases (
+      id TEXT PRIMARY KEY,
+      case_reference TEXT UNIQUE NOT NULL,
+      title TEXT,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      target_address TEXT,
+      target_chain TEXT,
+      risk_level TEXT,
+      risk_score INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id TEXT PRIMARY KEY,
+      case_id TEXT,
+      investigation_id TEXT,
+      event_type TEXT NOT NULL,
+      event_time TEXT NOT NULL,
+      actor_type TEXT NOT NULL,
+      metadata_json TEXT
+    );
   `);
     migrate();
 }
@@ -88,6 +111,44 @@ function migrate() {
     }
 }
 // Repositories
+export const caseRepository = {
+    findById(id) {
+        const stmt = db.prepare("SELECT id, case_reference as caseReference, title, status, created_at as createdAt, updated_at as updatedAt, target_address as targetAddress, target_chain as targetChain, risk_level as riskLevel, risk_score as riskScore FROM cases WHERE id = ?");
+        return stmt.get(id);
+    },
+    findByReference(ref) {
+        const stmt = db.prepare("SELECT id, case_reference as caseReference, title, status, created_at as createdAt, updated_at as updatedAt, target_address as targetAddress, target_chain as targetChain, risk_level as riskLevel, risk_score as riskScore FROM cases WHERE case_reference = ?");
+        return stmt.get(ref);
+    },
+    findAll() {
+        const stmt = db.prepare("SELECT id, case_reference as caseReference, title, status, created_at as createdAt, updated_at as updatedAt, target_address as targetAddress, target_chain as targetChain, risk_level as riskLevel, risk_score as riskScore FROM cases ORDER BY created_at DESC");
+        return stmt.all();
+    },
+    save(c) {
+        const id = c.id || crypto.randomUUID();
+        const now = new Date().toISOString();
+        const createdAt = c.createdAt || now;
+        const updatedAt = now;
+        if (c.id && this.findById(c.id)) {
+            db.prepare(`UPDATE cases SET case_reference=?, title=?, status=?, updated_at=?, target_address=?, target_chain=?, risk_level=?, risk_score=? WHERE id=?`).run(c.caseReference, c.title ?? null, c.status, updatedAt, c.targetAddress ?? null, c.targetChain ?? null, c.riskLevel ?? null, c.riskScore ?? null, id);
+        }
+        else {
+            db.prepare(`INSERT INTO cases (id, case_reference, title, status, created_at, updated_at, target_address, target_chain, risk_level, risk_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, c.caseReference, c.title ?? null, c.status, createdAt, updatedAt, c.targetAddress ?? null, c.targetChain ?? null, c.riskLevel ?? null, c.riskScore ?? null);
+        }
+        return this.findById(id);
+    }
+};
+export const auditRepository = {
+    save(event) {
+        const id = event.id || crypto.randomUUID();
+        const eventTime = event.eventTime || new Date().toISOString();
+        db.prepare(`INSERT INTO audit_events (id, case_id, investigation_id, event_type, event_time, actor_type, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, event.caseId ?? null, event.investigationId ?? null, event.eventType, eventTime, event.actorType, event.metadataJson ?? null);
+        return { ...event, id, eventTime };
+    },
+    findByCase(caseId) {
+        return db.prepare("SELECT id, case_id as caseId, investigation_id as investigationId, event_type as eventType, event_time as eventTime, actor_type as actorType, metadata_json as metadataJson FROM audit_events WHERE case_id = ? ORDER BY event_time DESC").all(caseId);
+    }
+};
 export const addressLabelRepository = {
     findByAddressIgnoreCaseAndChain(address, chain) {
         const stmt = db.prepare("SELECT id, address, chain, label_type as labelType, entity_name as entityName, source, confidence, updated_at as updatedAt FROM address_labels WHERE LOWER(address) = LOWER(?) AND chain = ?");
