@@ -19,7 +19,7 @@
 import { config } from "../config.js";
 import { TronGridApiError, tronGridClient } from "./TronGridClient.js";
 import { ChainTransaction } from "../types/index.js";
-import type { ChainClient } from "./EthereumChainClient.js";
+import type { ChainClient } from "./EvmChainClient.js";
 
 const SUN_PER_TRX = 1_000_000n;
 

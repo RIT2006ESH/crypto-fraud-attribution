@@ -36,6 +36,30 @@ export interface KeyPathDto {
   significance: string;
 }
 
+export interface TraceEntityDto {
+  address: string;
+  hopDepth: number;
+  labelType?: LabelType | string | null;
+  confidence?: number | null;
+}
+
+export interface AttributionConfidenceDto {
+  score: number;
+  level: string;
+  reasons: string[];
+}
+
+export interface AttributionPrimaryDto {
+  address: string;
+  entity?: string | null;
+  hopDepth: number;
+}
+
+export interface AttributionDto {
+  primary: AttributionPrimaryDto;
+  confidence: AttributionConfidenceDto;
+}
+
 /**
  * The service's own summary of the trace.
  *
@@ -50,7 +74,7 @@ export interface FindingsDto {
   traceDepth: number;
   nodes: number;
   transfers: number;
-  entities: string[];
+  entities: TraceEntityDto[];
   keyPaths: KeyPathDto[];
 }
 
@@ -103,6 +127,7 @@ export interface TraceResult {
   } | null;
   findings: FindingsDto | null;
   provenance: ProvenanceDto | null;
+  attribution?: AttributionDto | null;
 }
 
 export interface TraceInput {

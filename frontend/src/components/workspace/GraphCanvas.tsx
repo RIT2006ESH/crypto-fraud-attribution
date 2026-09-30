@@ -118,7 +118,7 @@ export function GraphCanvas({
     const flow = new Map<string, number>();
     let maxEdgeLog = 0;
     for (const e of view.edges) {
-      const v = Number(e.amount);
+      const v = Number(e.totalAmount);
       const safe = Number.isFinite(v) && v > 0 ? v : 0;
       flow.set(e.source, (flow.get(e.source) ?? 0) + safe);
       flow.set(e.target, (flow.get(e.target) ?? 0) + safe);
@@ -160,7 +160,7 @@ export function GraphCanvas({
     });
 
     const edges: ElementDefinition[] = view.edges.map((e) => {
-      const v = Number(e.amount);
+      const v = Number(e.totalAmount);
       const safe = Number.isFinite(v) && v > 0 ? v : 0;
       return {
         group: 'edges' as const,
@@ -168,13 +168,13 @@ export function GraphCanvas({
           id: e.id,
           source: e.source,
           target: e.target,
-          amount: e.amount,
-          asset: e.edge.tokenSymbol || '',
+          amount: e.totalAmount,
+          asset: e.isNative ? '' : e.assetLabel,
           stable: e.isStable,
-          onRiskPath: e.isOnPathRisk,
-          w: edgeWidth(e.amount),
+          onRiskPath: e.isRisk,
+          w: edgeWidth(e.totalAmount),
           heat: maxEdgeLog > 0 ? Math.log10(1 + safe) / maxEdgeLog : 0,
-          amountLabel: `${formatAmount(e.amount)}${e.edge.tokenSymbol ? ' ' + e.edge.tokenSymbol : ''}`,
+          amountLabel: `${formatAmount(e.totalAmount)}${!e.isNative ? ' ' + e.assetLabel : ''}`,
         },
         classes: showAmounts ? 'show-amount' : '',
       };

@@ -12,6 +12,12 @@ export class TraceOrchestrationService {
     riskScoringService;
     mlService;
     preferCached;
+    /**
+     * Live traces run one at a time. Two overlapping traces double the Etherscan
+     * call rate and the free tier answers the burst with a bogus "Invalid API Key",
+     * killing both. A queued scan waits instead of stacking.
+     */
+    traceQueue = Promise.resolve();
     constructor(labelService, mlService) {
         this.traceService = new TraceService(labelService);
         this.riskScoringService = new RiskScoringService();
@@ -31,10 +37,15 @@ export class TraceOrchestrationService {
     }
     // ── Single-chain trace ────────────────────────────────────────────────────
     async submitSingleChain(input) {
+        const run = this.traceQueue.then(() => this.runSingleChain(input));
+        this.traceQueue = run.then(() => undefined, () => undefined);
+        return run;
+    }
+    async runSingleChain(input) {
         const chain = (input.chain || "ethereum").toLowerCase();
         const address = input.walletAddress.trim();
         if (this.preferCached) {
-            const cached = this.replay(address, chain, null);
+            const cached = await this.replay(address, chain, null);
             if (cached) {
                 console.log(`[OrchestrationService] Serving ${address}/${chain} from cache`);
                 return cached;
@@ -62,13 +73,30 @@ export class TraceOrchestrationService {
         if (request.status === TraceStatus.COMPLETED) {
             const risk = this.riskScoringService.score(request, nodes, edges);
             ml = await this.mlService.analyze(nodes, edges, address);
-            const mlPatterns = (ml?.layering ?? []).map((p) => `ML layering signal: ${p.type} — ${p.detail}`);
+            // Behavioural mixer upgrades: UNLABELED nodes shaped like mixer pools become
+            // MIXER (source ml:behavioral) so legend counts, filters, ledger and the
+            // mixer risk weight all follow — no registry hit required.
+            const upgradedMixers = this.applyMixerUpgrades(request.id, chain, nodes, ml);
+            // Identical signals from many nodes (e.g. 25x rapid pass-through) collapse
+            // to one line; per-node detail stays in the ml.layering payload.
+            const mlPatterns = [...new Set((ml?.layering ?? []).map((p) => `ML layering signal: ${p.type} — ${p.detail}`))];
+            // Unsupervised outlier headcount reaches the risk signals even when no
+            // structural rule names the node — the point of anomaly detection.
+            const anomalousCount = ml ? Object.values(ml.nodes).filter((n) => n.anomaly >= 0.8).length : 0;
+            if (anomalousCount > 0) {
+                mlPatterns.push(`ML anomaly: ${anomalousCount} address(es) score far outside this trace's norm (unsupervised Isolation Forest, no labelled fraud data)`);
+            }
+            if (upgradedMixers.length > 0) {
+                mlPatterns.push(`Funds routed through a suspected mixer (${upgradedMixers.length} address(es) flagged by behavioural model)`);
+            }
             const patterns = mlPatterns.length > 0
                 ? [...risk.patterns.filter((p) => p !== "No high-risk patterns detected"), ...mlPatterns]
                 : risk.patterns;
+            // Mirror the rule engine's mixer weight for ML-upgraded nodes.
+            const score = Math.min(100, risk.score + (upgradedMixers.length > 0 ? 45 : 0));
             request = traceRequestRepository.save({
                 ...request,
-                riskScore: risk.score,
+                riskScore: score,
                 flaggedPatterns: patterns.join(" | "),
             });
             auditRepository.save({
@@ -76,7 +104,7 @@ export class TraceOrchestrationService {
                 investigationId: request.id,
                 eventType: "INVESTIGATION_COMPLETED",
                 actorType: "SYSTEM",
-                metadataJson: JSON.stringify({ riskScore: risk.score })
+                metadataJson: JSON.stringify({ riskScore: score })
             });
         }
         else {
@@ -89,9 +117,17 @@ export class TraceOrchestrationService {
         }
         const thin = request.status !== TraceStatus.COMPLETED || nodes.length <= 1;
         if (thin) {
-            const cached = this.replay(address, chain, request.id);
+            const cached = await this.replay(address, chain, request.id);
             if (cached) {
                 console.warn(`[OrchestrationService] Live trace of ${address}/${chain} returned nothing; replaying last good trace`);
+                // A replayed result without this notice reads as "the same stale output".
+                // State plainly that the live attempt failed and how old the fallback is.
+                if (request.status === TraceStatus.FAILED) {
+                    cached.limitations = [
+                        ...(cached.limitations ?? []),
+                        `Live trace failed (${request.failureReason ?? "unknown error"}); showing last good result from ${cached.completedAt ?? "an earlier run"}.`,
+                    ];
+                }
                 return cached;
             }
         }
@@ -182,7 +218,47 @@ export class TraceOrchestrationService {
         });
     }
     // ── Internals ─────────────────────────────────────────────────────────────
-    replay(address, chain, excludeId) {
+    /**
+     * Relabels UNLABELED graph nodes the ML model flags as behavioural mixers.
+     * Curated labels are never touched; every upgrade is persisted to the graph
+     * and the label cache with source "ml:behavioral" plus the model confidence.
+     * Returns the upgraded addresses (lower-cased) for risk/pattern wiring.
+     */
+    applyMixerUpgrades(traceId, chain, nodes, ml) {
+        const upgraded = [];
+        if (!ml)
+            return upgraded;
+        const byAddress = new Map(nodes.map((n) => [n.address.toLowerCase(), n]));
+        for (const s of ml.suspected_mixers ?? []) {
+            if (s.mixer_prob < 0.7)
+                continue;
+            const node = byAddress.get(s.address.toLowerCase());
+            if (!node || (node.labelType ?? LabelType.UNLABELED) !== LabelType.UNLABELED)
+                continue;
+            graphNodeRepository.updateLabel(traceId, node.address, LabelType.MIXER, s.mixer_prob);
+            try {
+                addressLabelRepository.save({
+                    address: node.address,
+                    chain,
+                    labelType: LabelType.MIXER,
+                    entityName: "Suspected mixer (ML behavioural)",
+                    source: "ml:behavioral",
+                    confidence: s.mixer_prob,
+                });
+            }
+            catch (error) {
+                console.warn(`[OrchestrationService] could not cache ML mixer label: ${error instanceof Error ? error.message : error}`);
+            }
+            node.labelType = LabelType.MIXER;
+            node.labelConfidence = s.mixer_prob;
+            upgraded.push(node.address.toLowerCase());
+        }
+        if (upgraded.length > 0) {
+            console.log(`[OrchestrationService] ML upgraded ${upgraded.length} node(s) to MIXER on ${traceId}`);
+        }
+        return upgraded;
+    }
+    async replay(address, chain, excludeId) {
         const completedRequests = traceRequestRepository.findByWalletAddressIgnoreCaseAndChainAndStatusIn(address, chain, [TraceStatus.COMPLETED]);
         const candidates = completedRequests.filter((r) => !excludeId || r.id !== excludeId);
         if (candidates.length === 0)
@@ -196,7 +272,11 @@ export class TraceOrchestrationService {
             const nodes = graphNodeRepository.findByTraceId(req.id);
             const edges = graphEdgeRepository.findByTraceId(req.id);
             if (nodes.length > 0) {
-                return this.assemble(req, nodes, edges, true);
+                // ML scoring is local and fast (~0.3s), so even a replayed result gets
+                // fresh model output — a cached case never reads as "ML offline" again.
+                const ml = await this.mlService.analyze(nodes, edges, address);
+                this.applyMixerUpgrades(req.id, chain, nodes, ml);
+                return this.assemble(req, nodes, edges, true, ml);
             }
         }
         return null;
@@ -232,14 +312,33 @@ export class TraceOrchestrationService {
                 address: addr,
                 similarity: v.propagated.similarity,
                 like: v.propagated.like,
+                basis: v.propagated.basis ?? "tabular",
                 exchangeProb: v.exchange_prob,
                 reasons: v.reasons,
             }));
+            const anomalies = Object.entries(ml.nodes)
+                .map(([addr, v]) => ({
+                address: addr,
+                anomaly: v.anomaly,
+                exchangeProb: v.exchange_prob,
+                flags: v.flags,
+            }))
+                .filter((a) => a.anomaly >= 0.5)
+                .sort((a, b) => b.anomaly - a.anomaly)
+                .slice(0, 5);
             mlDto = {
                 vasp: ml.vasp,
                 alternatives: ml.alternatives ?? [],
                 layering: ml.layering ?? [],
                 propagated,
+                clusters: ml.clusters ?? {},
+                anomalies,
+                anomalyAvailable: ml.anomaly_available ?? false,
+                suspectedMixers: (ml.suspected_mixers ?? []).map((s) => ({
+                    address: s.address,
+                    mixerProb: s.mixer_prob,
+                    reasons: s.reasons,
+                })),
                 note: ml.note ?? null,
             };
         }

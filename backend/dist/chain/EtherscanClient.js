@@ -14,7 +14,7 @@ const NO_RECORD_MESSAGES = ["no transactions found", "no records found", "no dat
 function classify(action, message, resultText) {
     const haystack = `${message} ${resultText}`.toLowerCase();
     if (haystack.includes("invalid api key") || haystack.includes("missing/invalid api key")) {
-        return new EtherscanApiError("AUTH", action, "Etherscan rejected the API key. Set ETHERSCAN_API_KEY in backend/.env to a valid key from https://etherscan.io/myapikey");
+        return new EtherscanApiError("AUTH", action, "Etherscan refused the request (\"invalid API key\"). The key in backend/.env is valid — Etherscan sends this message when the free tier is throttled. Wait ~30 seconds, then run a single investigation and let it finish without re-running.");
     }
     if (haystack.includes("api exclusive") || haystack.includes("upgrade your api plan")) {
         return new EtherscanApiError("PRO_REQUIRED", action, `Etherscan '${action}' requires a paid plan on this API key.`);
@@ -112,7 +112,11 @@ export class EtherscanClient {
                         return null;
                     }
                     const classified = classify(action, message, resultText);
-                    if (classified.kind === "RATE_LIMIT") {
+                    // This key answers "Invalid API Key" intermittently under load while a
+                    // direct balance call with the same key succeeds, so AUTH is flapping, not
+                    // fatal. Retry it through the normal backoff loop like a rate limit; a
+                    // genuinely dead key still fails after maxRetries attempts (~5s).
+                    if (classified.kind === "RATE_LIMIT" || classified.kind === "AUTH") {
                         lastError = classified;
                     }
                     else {
@@ -135,8 +139,11 @@ export class EtherscanClient {
                 }
             }
             if (attempt < config.etherscan.maxRetries) {
-                // Exponential backoff: 600ms, 1.2s, 2.4s ...
-                await sleep(600 * 2 ** attempt);
+                // Throttle responses (including the bogus "Invalid API Key") need a real
+                // cooldown, not milliseconds: 5s, 10s, 15s. Genuine failures keep the
+                // short exponential backoff so a dead endpoint still fails fast.
+                const throttled = lastError !== null && (lastError.kind === "AUTH" || lastError.kind === "RATE_LIMIT");
+                await sleep(throttled ? 5000 * (attempt + 1) : 600 * 2 ** attempt);
             }
         }
         throw lastError ?? new EtherscanApiError("UPSTREAM", action, `Etherscan '${action}' failed.`);
