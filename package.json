@@ -5,6 +5,7 @@
   "scripts": {
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
+    "dev:ml": "backend/ml-service/.venv/Scripts/uvicorn main:app --reload --port 8000 --app-dir backend/ml-service",
     "build:backend": "npm --prefix backend run build",
     "build:frontend": "npm --prefix frontend run build"
   }

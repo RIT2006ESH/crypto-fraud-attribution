@@ -76,6 +76,12 @@ export function chainMeta(id: string | null | undefined): ChainMeta {
   return CHAIN_META.all;
 }
 
+/** Explorer link for a transaction, or null when no trustworthy template exists. */
+export function explorerTxUrl(chain: string | null | undefined, txHash: string): string | null {
+  const template = chainMeta(chain).explorerTxTemplate;
+  return template ? template.replace('{hash}', txHash) : null;
+}
+
 /** True when the address belongs to the given chain, from its prefix alone. */
 export function addressMatchesChain(address: string, chainId: string): boolean {
   if (chainId === 'all') return true;

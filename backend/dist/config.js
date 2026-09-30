@@ -64,6 +64,13 @@ export const config = {
     dbPath: process.env.DB_PATH
         ? path.resolve(backendRoot, process.env.DB_PATH)
         : path.join(backendRoot, "data", "cryptofraud.sqlite"),
+    ml: {
+        // Base URL of the Python ML service (backend/ml-service/main.py).
+        // Empty = ML disabled; traces fall back to the rule-based risk engine.
+        // Example: ML_URL=http://localhost:8000
+        url: (process.env.ML_URL || "").trim().replace(/\/$/, ""),
+        timeoutMs: int(process.env.ML_TIMEOUT_MS, 15000),
+    },
     /**
      * Static registry of chains the system supports, returned verbatim by GET /api/chains.
      * "all" is a meta-entry that triggers a parallel scan across all real chains.

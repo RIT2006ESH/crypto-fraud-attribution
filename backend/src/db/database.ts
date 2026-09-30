@@ -318,6 +318,18 @@ export const graphNodeRepository = {
     }));
   },
 
+  /**
+   * ML label upgrade: an UNLABELED node the model flags (e.g. behavioural mixer)
+   * is re-labelled in place so counts, filters, ledger and risk all follow.
+   * Never touches curated labels — callers must check UNLABELED first.
+   */
+  updateLabel(traceId: string, address: string, labelType: LabelType, confidence: number | null): void {
+    db.prepare(`
+      UPDATE graph_nodes SET label_type = ?, label_confidence = ?
+      WHERE trace_id = ? AND LOWER(address) = LOWER(?)
+    `).run(labelType, confidence, traceId, address);
+  },
+
   save(node: Omit<GraphNode, "id"> & { id?: string }): GraphNode {
     const id = node.id || crypto.randomUUID();
     const stmt = db.prepare(`

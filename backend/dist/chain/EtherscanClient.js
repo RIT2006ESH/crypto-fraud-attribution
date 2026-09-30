@@ -72,7 +72,7 @@ export class EtherscanClient {
             throw new EtherscanApiError("PRO_REQUIRED", action, `Etherscan '${action}' is not available on this plan.`);
         }
         const query = {
-            chainid: config.etherscan.chainId,
+            chainid: params.chainid ?? config.etherscan.chainId,
             ...params,
             apikey: config.etherscan.apiKey,
         };

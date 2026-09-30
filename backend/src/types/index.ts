@@ -116,6 +116,51 @@ export interface ExchangeDto {
   hopDepth: number;
 }
 
+export interface MlVaspDto {
+  address: string;
+  basis: string;
+  confidence: number;
+  hops: number;
+  received: number;
+  reasons: string[];
+}
+
+export interface MlLayeringDto {
+  type: string;
+  nodes: string[];
+  detail: string;
+  max_anomaly?: number | null;
+}
+
+export interface MlAnomalyDto {
+  address: string;
+  anomaly: number;
+  exchangeProb: number;
+  flags: string[];
+}
+
+/**
+ * Compact ML insights attached to a freshly traced result.
+ * Present only when the Python ML service (ML_URL) was reachable during
+ * the trace; absent on cached replays and when ML is disabled.
+ */
+export interface MlInsightDto {
+  vasp: MlVaspDto | null;
+  alternatives: MlVaspDto[];
+  layering: MlLayeringDto[];
+  /** UNLABELED nodes the model considers exchange-like, with SHAP reasons. */
+  propagated: Array<{ address: string; similarity: number; like: string; basis: string; exchangeProb: number; reasons: string[] }>;
+  /** Heuristic clusters: hot-wallet sweeps, consolidation:<addr>, siblings:<addr>, co-input:<tx>. */
+  clusters: Record<string, string[]>;
+  /** Top unsupervised outliers (Isolation Forest), highest first. */
+  anomalies: MlAnomalyDto[];
+  /** False below 8 traced nodes — scores would be fake all-zeros. */
+  anomalyAvailable: boolean;
+  /** Behavioural mixer suspects the model labelled without a registry hit. */
+  suspectedMixers: Array<{ address: string; mixerProb: number; reasons: string[] }>;
+  note?: string | null;
+}
+
 export interface TraceResultDto {
   id: string;
   caseId?: string | null;
@@ -149,6 +194,7 @@ export interface TraceResultDto {
     riskEngineVersion: string;
   };
   limitations?: string[];
+  ml?: MlInsightDto | null;
   attribution?: {
     primary: any;
     confidence: {

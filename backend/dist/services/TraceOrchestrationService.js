@@ -2,17 +2,20 @@ import { config } from "../config.js";
 import { addressLabelRepository, graphEdgeRepository, graphNodeRepository, traceRequestRepository, auditRepository, } from "../db/database.js";
 import { TraceService } from "./TraceService.js";
 import { RiskScoringService } from "./RiskScoringService.js";
+import { MlService } from "./MlService.js";
 import { detectChain } from "../util/address.js";
 import { LabelType, TraceStatus, } from "../types/index.js";
 /** Real chains the system can trace on (excludes the "all" meta-entry). */
-const REAL_CHAINS = ["ethereum", "tron"];
+const REAL_CHAINS = ["ethereum", "polygon", "tron"];
 export class TraceOrchestrationService {
     traceService;
     riskScoringService;
+    mlService;
     preferCached;
-    constructor(labelService) {
+    constructor(labelService, mlService) {
         this.traceService = new TraceService(labelService);
         this.riskScoringService = new RiskScoringService();
+        this.mlService = mlService ?? new MlService();
         this.preferCached = config.trace.preferCached;
     }
     /**
@@ -52,12 +55,21 @@ export class TraceOrchestrationService {
         request = await this.traceService.trace(request);
         let nodes = graphNodeRepository.findByTraceId(request.id);
         let edges = graphEdgeRepository.findByTraceId(request.id);
+        // ML enrichment over the traced subgraph (XGBoost/SHAP, Isolation Forest,
+        // label propagation + clustering, layering rules). Best-effort: null when
+        // ML_URL is unset or the service is unreachable — the trace still succeeds.
+        let ml = null;
         if (request.status === TraceStatus.COMPLETED) {
             const risk = this.riskScoringService.score(request, nodes, edges);
+            ml = await this.mlService.analyze(nodes, edges, address);
+            const mlPatterns = (ml?.layering ?? []).map((p) => `ML layering signal: ${p.type} — ${p.detail}`);
+            const patterns = mlPatterns.length > 0
+                ? [...risk.patterns.filter((p) => p !== "No high-risk patterns detected"), ...mlPatterns]
+                : risk.patterns;
             request = traceRequestRepository.save({
                 ...request,
                 riskScore: risk.score,
-                flaggedPatterns: risk.patterns.join(" | "),
+                flaggedPatterns: patterns.join(" | "),
             });
             auditRepository.save({
                 caseId: request.caseId,
@@ -83,7 +95,7 @@ export class TraceOrchestrationService {
                 return cached;
             }
         }
-        return this.assemble(request, nodes, edges, false);
+        return this.assemble(request, nodes, edges, false, ml);
     }
     // ── Multi-chain parallel scan ─────────────────────────────────────────────
     /**
@@ -91,7 +103,7 @@ export class TraceOrchestrationService {
      * a trace on each in parallel.  Results are merged into a MultiChainTraceResultDto.
      *
      * Address format rules:
-     *   0x…  (EVM)  → Ethereum only (for MVP; finals adds BSC, Polygon, etc.)
+     *   0x…  (EVM)  → Ethereum or Polygon
      *   T…   (Tron) → Tron only
      *   unknown     → all chains attempted, failures suppressed per-chain
      */
@@ -189,7 +201,7 @@ export class TraceOrchestrationService {
         }
         return null;
     }
-    assemble(request, nodes, edges, fromCache) {
+    assemble(request, nodes, edges, fromCache, ml) {
         const exchangeNodes = nodes.filter((n) => n.labelType === LabelType.EXCHANGE);
         let nearestExchange = null;
         if (exchangeNodes.length > 0) {
@@ -199,6 +211,36 @@ export class TraceOrchestrationService {
                 address: nearestNode.address,
                 entity: label?.entityName || null,
                 hopDepth: nearestNode.hopDepth,
+            };
+        }
+        else if (ml?.vasp) {
+            // No labelled exchange on the path, but the ML model inferred one
+            // (feature similarity to a labelled exchange + sweep clustering).
+            nearestExchange = {
+                address: ml.vasp.address,
+                entity: null,
+                hopDepth: ml.vasp.hops,
+            };
+        }
+        // Compact ML summary for API consumers (full per-node SHAP/anomaly map
+        // stays in the ML service; only propagated exchange-like nodes surface here).
+        let mlDto = null;
+        if (ml) {
+            const propagated = Object.entries(ml.nodes)
+                .filter(([, v]) => v.propagated)
+                .map(([addr, v]) => ({
+                address: addr,
+                similarity: v.propagated.similarity,
+                like: v.propagated.like,
+                exchangeProb: v.exchange_prob,
+                reasons: v.reasons,
+            }));
+            mlDto = {
+                vasp: ml.vasp,
+                alternatives: ml.alternatives ?? [],
+                layering: ml.layering ?? [],
+                propagated,
+                note: ml.note ?? null,
             };
         }
         const nodeDtos = [...nodes]
@@ -255,6 +297,7 @@ export class TraceOrchestrationService {
             nearestExchange,
             nodes: nodeDtos,
             edges: edgeDtos,
+            ml: mlDto,
             findings: {
                 summary: `Trace identified ${nodes.length} nodes and ${edges.length} transfers.`,
                 targetAddress: request.walletAddress,
@@ -271,7 +314,7 @@ export class TraceOrchestrationService {
                     }] : []
             },
             provenance: {
-                sources: [{ provider: request.chain === "ethereum" ? "ETHERSCAN" : "TRONGRID" }],
+                sources: [{ provider: request.chain === "tron" ? "TRONGRID" : "ETHERSCAN" }],
                 fetchedAt: request.requestedAt,
                 riskEngineVersion: "1.0.0"
             },

@@ -2,16 +2,14 @@ import { GraphQLError } from "graphql";
 import { config } from "../config.js";
 import { KNOWN_ADDRESSES } from "../labels/knownAddresses.js";
 import { describeAddressProblem, normalizeAddress } from "../util/address.js";
-/** Same normalisation and wording as the REST route; see util/address.ts. */
 function requireAddress(address) {
     const value = normalizeAddress(address);
     const problem = describeAddressProblem(value);
     if (problem) {
-        throw new GraphQLError(problem, { extensions: { code: "BAD_USER_INPUT" } });
+        throw new GraphQLError(problem, { extensions: { code: "INVALID_ADDRESS" } });
     }
     return value;
 }
-/** DTO stores findings as a single " | "-joined string; GraphQL exposes a real list. */
 function splitPatterns(patterns) {
     if (!patterns)
         return [];
@@ -20,25 +18,110 @@ function splitPatterns(patterns) {
         .map((p) => p.trim())
         .filter((p) => p.length > 0);
 }
-function toTrace(dto) {
+function toInvestigation(dto) {
+    const isFailed = dto.status === "FAILED";
+    const isPartial = dto.status === "PARTIAL";
+    // Aggregate Edges
+    const edgesMap = new Map();
+    const nodes = dto.nodes || [];
+    const rawEdges = dto.edges || [];
+    rawEdges.forEach((e) => {
+        const key = `${e.fromAddress}-${e.toAddress}-${dto.chain}-${e.tokenSymbol || 'native'}`;
+        if (!edgesMap.has(key)) {
+            edgesMap.set(key, {
+                id: key,
+                source: e.fromAddress,
+                target: e.toAddress,
+                chain: dto.chain,
+                asset: e.tokenSymbol || 'native',
+                assetType: e.transferType || 'native',
+                transferCount: 0,
+                aggregateAmount: 0n,
+                firstSeen: e.txTimestamp,
+                lastSeen: e.txTimestamp,
+                isKeyPath: false,
+                riskLevel: "LOW",
+                transactionIds: [],
+            });
+        }
+        const agg = edgesMap.get(key);
+        agg.transferCount += 1;
+        try {
+            // basic aggregation, assuming we can sum float strings roughly, 
+            // ideally use a bignumber lib but this is for demonstration.
+            agg.aggregateAmount += BigInt(Math.floor(parseFloat(e.amount) * 1e18));
+        }
+        catch { }
+        if (!agg.firstSeen || (e.txTimestamp && e.txTimestamp < agg.firstSeen))
+            agg.firstSeen = e.txTimestamp;
+        if (!agg.lastSeen || (e.txTimestamp && e.txTimestamp > agg.lastSeen))
+            agg.lastSeen = e.txTimestamp;
+        agg.transactionIds.push(e.txHash);
+    });
+    const graphEdges = Array.from(edgesMap.values()).map(e => ({
+        ...e,
+        aggregateAmount: (Number(e.aggregateAmount) / 1e18).toString()
+    }));
+    const graphNodes = nodes.map((n) => {
+        const isTarget = n.address.toLowerCase() === dto.walletAddress.toLowerCase();
+        const isKnownEntity = !!n.labelType && n.labelType !== 'UNLABELED';
+        return {
+            id: n.address,
+            address: n.address,
+            chain: dto.chain,
+            entityName: null,
+            entityType: n.labelType || "UNLABELED",
+            label: n.labelType || "UNLABELED",
+            hop: n.hopDepth,
+            isTarget,
+            isKnownEntity,
+            riskLevel: "LOW",
+            attributionConfidence: n.labelConfidence || 0,
+            transferCount: 0,
+            incomingCount: 0,
+            outgoingCount: 0,
+        };
+    });
     return {
-        ...dto,
-        flaggedPatterns: splitPatterns(dto.flaggedPatterns),
-        reportUrl: `/api/traces/${dto.id}/report`,
-        // Ensure token fields are always present in edges (nullable for native transfers).
-        edges: (dto.edges || []).map((e) => ({
+        id: dto.id,
+        status: dto.status === "FAILED" ? "FAILED" : (dto.status === "PARTIAL" ? "PARTIAL" : "COMPLETED"),
+        metadata: {
+            caseReference: dto.caseId,
+            walletAddress: dto.walletAddress,
+            chain: dto.chain,
+            requestedAt: dto.requestedAt,
+            completedAt: dto.completedAt,
+            failureReason: dto.failureReason,
+        },
+        graph: isFailed ? null : {
+            nodes: graphNodes,
+            edges: graphEdges,
+        },
+        ledger: rawEdges.map((e) => ({
             ...e,
             tokenSymbol: e.tokenSymbol ?? null,
             tokenAddress: e.tokenAddress ?? null,
             transferType: e.transferType ?? "native",
         })),
+        attribution: {
+            nearestExchange: dto.nearestExchange,
+        },
+        risk: {
+            score: dto.riskScore,
+            category: dto.riskCategory,
+        },
+        findings: splitPatterns(dto.flaggedPatterns),
+        provenance: {
+            servedFromCache: dto.servedFromCache,
+            reportUrl: `/api/traces/${dto.id}/report`,
+        },
     };
 }
 export const resolvers = {
     Query: {
-        trace: (_parent, args, ctx) => {
+        investigation: (_parent, args, ctx) => {
             const result = ctx.orchestrationService.get(args.id);
-            return result ? toTrace(result) : null;
+            return result ? toInvestigation(result) : null;
         },
         addressLabel: async (_parent, args, ctx) => {
             const address = requireAddress(args.address);
@@ -63,17 +146,13 @@ export const resolvers = {
         chains: () => config.supportedChains,
     },
     Mutation: {
-        submitTrace: async (_parent, args, ctx) => {
+        submitInvestigation: async (_parent, args, ctx) => {
             const walletAddress = requireAddress(args.input.walletAddress);
             const result = await ctx.orchestrationService.submit({
                 walletAddress,
                 chain: args.input.chain || "all",
                 caseId: args.input.caseId || undefined,
             });
-            // submitTrace returns a single-chain TraceResultDto when a specific chain or
-            // auto-detected chain is used.  For "all", the orchestrator fans out but still
-            // returns the first successful chain's result via the Trace type.
-            // (Multi-chain full result shape is only via the REST endpoint for MVP.)
             const dto = "perChain" in result
                 ? Object.values(result.perChain).find((r) => !("error" in r)) ?? {
                     id: "multi",
@@ -90,7 +169,7 @@ export const resolvers = {
                     riskCategory: result.overallRiskCategory,
                 }
                 : result;
-            return toTrace(dto);
+            return toInvestigation(dto);
         },
     },
 };

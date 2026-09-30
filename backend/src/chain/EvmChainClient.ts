@@ -67,32 +67,28 @@ export class EvmChainClient implements ChainClient {
    * Throws on auth/plan failures so a misconfigured key shows up as a FAILED trace.
    */
   async getOutgoingTransactions(address: string): Promise<ChainTransaction[]> {
-    const [nativeResult, tokenResult] = await Promise.allSettled([
-      this.fetchNativeTransfers(address),
-      this.fetchTokenTransfers(address),
-    ]);
-
+    // Sequential, never parallel: two in-flight requests routinely trip the free
+    // tier's throttle, which Etherscan disguises as "Invalid API Key" and which
+    // used to kill whole traces. Slower per hop, but traces actually finish.
     const txns: ChainTransaction[] = [];
 
-    if (nativeResult.status === "fulfilled") {
-      txns.push(...nativeResult.value);
-    } else {
+    try {
+      txns.push(...(await this.fetchNativeTransfers(address)));
+    } catch (err: unknown) {
       // AUTH / PRO_REQUIRED errors must propagate to stop the trace cleanly.
-      const err = nativeResult.reason;
       if (err instanceof EtherscanApiError && (err.kind === "AUTH" || err.kind === "PRO_REQUIRED")) {
         throw err;
       }
-      console.warn(`[EvmChainClient:${this.chainName}] native fetch failed for ${address}: ${err?.message ?? err}`);
+      console.warn(`[EvmChainClient:${this.chainName}] native fetch failed for ${address}: ${err instanceof Error ? err.message : err}`);
     }
 
-    if (tokenResult.status === "fulfilled") {
-      txns.push(...tokenResult.value);
-    } else {
-      const err = tokenResult.reason;
+    try {
+      txns.push(...(await this.fetchTokenTransfers(address)));
+    } catch (err: unknown) {
       if (err instanceof EtherscanApiError && (err.kind === "AUTH" || err.kind === "PRO_REQUIRED")) {
         throw err;
       }
-      console.warn(`[EvmChainClient:${this.chainName}] ERC-20 fetch failed for ${address}: ${err?.message ?? err}`);
+      console.warn(`[EvmChainClient:${this.chainName}] ERC-20 fetch failed for ${address}: ${err instanceof Error ? err.message : err}`);
     }
 
     // Deduplicate: the same txHash can appear in both lists (e.g. a tx that transfers ETH

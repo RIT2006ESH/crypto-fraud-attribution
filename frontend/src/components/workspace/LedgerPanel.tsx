@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronLeft, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
+import { Search, TriangleAlert, X } from 'lucide-react';
 import { entityMeta } from '../../lib/entities';
 import { displaySymbol, symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
 import type { GraphView, Selection } from '../../lib/graph';
