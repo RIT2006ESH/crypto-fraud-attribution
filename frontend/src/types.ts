@@ -36,6 +36,30 @@ export interface KeyPathDto {
   significance: string;
 }
 
+export interface TraceEntityDto {
+  address: string;
+  hopDepth: number;
+  labelType?: LabelType | string | null;
+  confidence?: number | null;
+}
+
+export interface AttributionConfidenceDto {
+  score: number;
+  level: string;
+  reasons: string[];
+}
+
+export interface AttributionPrimaryDto {
+  address: string;
+  entity?: string | null;
+  hopDepth: number;
+}
+
+export interface AttributionDto {
+  primary: AttributionPrimaryDto;
+  confidence: AttributionConfidenceDto;
+}
+
 /**
  * The service's own summary of the trace.
  *
@@ -50,7 +74,7 @@ export interface FindingsDto {
   traceDepth: number;
   nodes: number;
   transfers: number;
-  entities: string[];
+  entities: TraceEntityDto[];
   keyPaths: KeyPathDto[];
 }
 
@@ -85,8 +109,25 @@ export interface TraceResult {
   nearestExchange: ExchangeDto | null;
   nodes: NodeDto[];
   edges: EdgeDto[];
+  /**
+   * Compact ML insights (XGBoost/SHAP, Isolation Forest, propagation +
+   * clustering, layering rules). Present only on fresh traces when the
+   * Python ML service was reachable; absent on cached replays.
+   */
+  ml?: {
+    vasp: { address: string; basis: string; confidence: number; hops: number; received: number; reasons: string[] } | null;
+    alternatives: { address: string; basis: string; confidence: number; hops: number; received: number; reasons: string[] }[];
+    layering: { type: string; nodes: string[]; detail: string; max_anomaly?: number | null }[];
+    propagated: { address: string; similarity: number; like: string; basis: string; exchangeProb: number; reasons: string[] }[];
+    clusters: Record<string, string[]>;
+    anomalies: { address: string; anomaly: number; exchangeProb: number; flags: string[] }[];
+    anomalyAvailable: boolean;
+    suspectedMixers: { address: string; mixerProb: number; reasons: string[] }[];
+    note?: string | null;
+  } | null;
   findings: FindingsDto | null;
   provenance: ProvenanceDto | null;
+  attribution?: AttributionDto | null;
 }
 
 export interface TraceInput {

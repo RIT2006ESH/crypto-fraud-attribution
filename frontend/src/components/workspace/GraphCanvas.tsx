@@ -1,70 +1,79 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape';
-// Registers the `dagre` layout name with Cytoscape. Its options are not part of
-// Cytoscape's own LayoutOptions union, so the layout object below is declared
-// separately and cast at the call sites.
 import dagre from 'cytoscape-dagre';
 import type { GraphView } from '../../lib/graph';
 import { getGraphStyle } from '../../lib/graph/style';
 import { useTheme } from '../../lib/theme';
 
-// Registers the `dagre` layout name on the Cytoscape build we imported above. Without
-// this, `layout: { name: 'dagre' }` throws at runtime.
 cytoscape.use(dagre);
-
-/**
- * The graph canvas.
- *
- * Cytoscape owns the element collection, the layout and the viewport; React owns
- * neither. The component is handed a derived view, an emphasis set and a selection,
- * and applies them as style classes — so React can re-render at any time without
- * disturbing the pan and zoom the investigator has set up.
- *
- * Element ids are fixed here and mirrored by `edgeId` in `lib/graph.ts`:
- *
- *   node  the lowercased address
- *   edge  from--to--txhash
- */
-
-/** `cytoscape-dagre` does not augment Cytoscape's layout option types, so the one
- *  cast lives here rather than being repeated at each call site. */
-const layoutOptions = () => LAYOUT as unknown as cytoscape.LayoutOptions;
 
 const LAYOUT = {
   name: 'dagre',
   rankDir: 'LR',
+<<<<<<< HEAD
   nodeSep: 60,
   rankSep: 200,
   edgeSep: 30,
+=======
+  nodeSep: 44,
+  rankSep: 160,
+  edgeSep: 20,
+>>>>>>> origin/main
   ranker: 'network-simplex',
   animate: false,
 } as const;
 
+const layoutOptions = () => LAYOUT as unknown as cytoscape.LayoutOptions;
+
+/** Above this many edges, amounts show on hover only so the drawing stays clean. */
+const ALWAYS_SHOW_AMOUNTS_UNDER = 17;
+
+/** Fit the visible graph, but never blow a tiny graph up to a giant one. */
+function fitGraph(cy: Core) {
+  cy.resize();
+  const visible = cy.elements(':visible');
+  if (visible.empty()) return;
+  cy.fit(visible, 64);
+  if (cy.zoom() > 1.5) {
+    cy.zoom(1.5);
+    cy.center(visible);
+  }
+}
+
+function formatAmount(raw: unknown): string {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return String(raw ?? '');
+  if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (value >= 1) return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  return value.toPrecision(3);
+}
+
+/** Log scale so 0.04 and 800 are both readable on one canvas. */
+function edgeWidth(raw: unknown): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return 1.8;
+  return Math.min(7, Math.max(1.8, 1.8 + Math.log10(1 + value) * 1.4));
+}
+
+function shortAddress(address: string): string {
+  return address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
+}
+
 export interface GraphCanvasHandle {
-  /** Re-run the layout, e.g. after a filter changes what is visible. */
   relayout: () => void;
-  /** Fit the whole graph. */
   fit: () => void;
-  /** Zoom by a multiplier, clamped to the configured range. */
+  resetZoom: () => void;
   zoomBy: (factor: number) => void;
-  /** Centre a single element. */
   focus: (id: string) => void;
 }
 
 interface Props {
   view: GraphView;
-  /** Node ids to emphasise. Everything else is subdued. `null` means no emphasis. */
   emphasis: Set<string> | null;
-  /** Edge ids to draw in the accent colour. */
   highlightEdges: Set<string> | null;
-  /** Node ids the active filter has removed from the drawing. */
   hidden: Set<string> | null;
   selectedId: string | null;
   onSelect: (id: string, kind: 'node' | 'edge') => void;
-  /**
-   * Increments whenever a new focus is requested. Because it changes even when the
-   * same element is requested twice, the effect below re-runs for repeat requests.
-   */
   focusNonce: number;
   focusId: string | null;
   ref?: React.Ref<GraphCanvasHandle>;
@@ -82,13 +91,19 @@ export function GraphCanvas({
   ref,
 }: Props) {
   const { theme } = useTheme();
+<<<<<<< HEAD
+=======
+  const mode = theme === 'dark' ? 'dark' : 'light';
+>>>>>>> origin/main
   const hostRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+<<<<<<< HEAD
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -98,50 +113,121 @@ export function GraphCanvas({
       }
     });
 
+=======
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) setIsReady(true);
+      }
+    });
+>>>>>>> origin/main
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
 
-  /* Keeping the latest callback in a ref means the Cytoscape instance is created once
-     per trace rather than once per parent render. Written in an effect rather than
-     during render so the ref is never read as part of rendering. */
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
-  const elements = useMemo<ElementDefinition[]>(() => {
-    const nodes: ElementDefinition[] = view.nodes.map((n) => ({
-      group: 'nodes' as const,
-      data: {
-        id: n.id,
-        // Only labelled entities get a visible label. Printing "UNLABELED" on every
-        // unlabelled address turns the graph into a wall of noise.
-        label: n.labelType && n.labelType !== 'UNLABELED' ? n.labelType.toLowerCase() : '',
-        address: n.id,
-        hop: n.hopDepth,
-        isRoot: n.isRoot,
-        labelType: n.labelType ?? 'UNLABELED',
-        inDeg: n.incoming,
-        outDeg: n.outgoing,
-      },
-    }));
+  const hiddenRef = useRef(hidden);
+  useEffect(() => {
+    hiddenRef.current = hidden;
+  }, [hidden]);
 
-    const edges: ElementDefinition[] = view.edges.map((e) => ({
-      group: 'edges' as const,
-      data: {
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        amount: e.amount,
-        asset: e.edge.tokenSymbol || '',
-        stable: e.isStable,
-        onRiskPath: e.isOnPathRisk,
-      },
-    }));
+  const elements = useMemo<ElementDefinition[]>(() => {
+    // Total value moving through each node, used to size it.
+    const flow = new Map<string, number>();
+    let maxEdgeLog = 0;
+    for (const e of view.edges) {
+      const v = Number(e.totalAmount);
+      const safe = Number.isFinite(v) && v > 0 ? v : 0;
+      flow.set(e.source, (flow.get(e.source) ?? 0) + safe);
+      flow.set(e.target, (flow.get(e.target) ?? 0) + safe);
+      maxEdgeLog = Math.max(maxEdgeLog, Math.log10(1 + safe));
+    }
+    let maxFlowLog = 0;
+    flow.forEach((v) => {
+      maxFlowLog = Math.max(maxFlowLog, Math.log10(1 + v));
+    });
+    const maxHop = Math.max(1, ...view.nodes.map((n) => n.hopDepth ?? 0));
+    const showAmounts = view.edges.length < ALWAYS_SHOW_AMOUNTS_UNDER;
+
+    const nodes: ElementDefinition[] = view.nodes.map((n) => {
+      const type = n.labelType ?? 'UNLABELED';
+      const named = type !== 'UNLABELED';
+      const flowNorm =
+        maxFlowLog > 0 ? Math.log10(1 + (flow.get(n.id) ?? 0)) / maxFlowLog : 0;
+      const size = n.isRoot ? 54 : 22 + flowNorm * 26;
+      const short = shortAddress(n.id);
+      const prefix = n.isRoot ? 'REPORTED' : named ? type : '';
+      return {
+        group: 'nodes' as const,
+        data: {
+          id: n.id,
+          label: prefix ? `${prefix}\n${short}` : short,
+          address: n.id,
+          hop: n.hopDepth,
+          tone: Math.min(1, (n.hopDepth ?? 0) / maxHop),
+          isRoot: n.isRoot,
+          labelType: type,
+          inDeg: n.incoming,
+          outDeg: n.outgoing,
+          size,
+        },
+        classes: [n.isRoot ? 'is-root' : '', n.outgoing === 0 && !n.isRoot ? 'is-leaf' : '']
+          .filter(Boolean)
+          .join(' '),
+      };
+    });
+
+    const edges: ElementDefinition[] = view.edges.map((e) => {
+      const v = Number(e.totalAmount);
+      const safe = Number.isFinite(v) && v > 0 ? v : 0;
+      return {
+        group: 'edges' as const,
+        data: {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          amount: e.totalAmount,
+          asset: e.isNative ? '' : e.assetLabel,
+          stable: e.isStable,
+          onRiskPath: e.isRisk,
+          w: edgeWidth(e.totalAmount),
+          heat: maxEdgeLog > 0 ? Math.log10(1 + safe) / maxEdgeLog : 0,
+          amountLabel: `${formatAmount(e.totalAmount)}${!e.isNative ? ' ' + e.assetLabel : ''}`,
+        },
+        classes: showAmounts ? 'show-amount' : '',
+      };
+    });
 
     return [...nodes, ...edges];
   }, [view]);
+
+  const applyHidden = (cy: Core) => {
+    const set = hiddenRef.current;
+    cy.batch(() => {
+      cy.nodes().forEach((node) => {
+        node.style('display', set?.has(node.id()) ? 'none' : 'element');
+      });
+    });
+  };
+
+  const showTooltip = (text: string, x: number, y: number) => {
+    const tip = tooltipRef.current;
+    const host = hostRef.current;
+    if (!tip || !host) return;
+    tip.textContent = text;
+    tip.style.display = 'block';
+    const maxX = host.clientWidth - tip.offsetWidth - 12;
+    const maxY = host.clientHeight - tip.offsetHeight - 12;
+    tip.style.left = `${Math.max(8, Math.min(x + 14, maxX))}px`;
+    tip.style.top = `${Math.max(8, Math.min(y + 14, maxY))}px`;
+  };
+
+  const hideTooltip = () => {
+    if (tooltipRef.current) tooltipRef.current.style.display = 'none';
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -150,13 +236,16 @@ export function GraphCanvas({
     const cy = cytoscape({
       container: host,
       elements,
+<<<<<<< HEAD
       style: getGraphStyle(theme === 'dark' ? 'dark' : 'light'),
+=======
+      style: getGraphStyle(mode),
+>>>>>>> origin/main
       wheelSensitivity: 0.22,
       minZoom: 0.1,
       maxZoom: 2.6,
       boxSelectionEnabled: false,
     });
-
     cyRef.current = cy;
 
     cy.on('tap', 'node', (event) => onSelectRef.current(event.target.id(), 'node'));
@@ -165,6 +254,7 @@ export function GraphCanvas({
       if (event.target === cy) onSelectRef.current('', 'node');
     });
 
+<<<<<<< HEAD
     let layoutCompleted = false;
 
     // The layout is run manually so we can wait for layoutstop before fitting
@@ -178,10 +268,86 @@ export function GraphCanvas({
     });
     layout.run();
 
+=======
+    const clearHover = () => {
+      cy.batch(() => cy.elements().removeClass('is-faded is-hover is-hover-label'));
+      hideTooltip();
+      host.style.cursor = 'default';
+    };
+
+    cy.on('mouseover', 'node', (event) => {
+      const node = event.target;
+      const path = node.union(node.predecessors()).union(node.successors());
+      cy.batch(() => {
+        cy.elements().not(path).addClass('is-faded');
+        path.addClass('is-hover');
+        node.connectedEdges().addClass('is-hover-label');
+      });
+      host.style.cursor = 'pointer';
+      const d = node.data();
+      const rp = event.renderedPosition;
+      showTooltip(
+        [
+          d.isRoot ? 'REPORTED WALLET' : d.labelType,
+          d.address,
+          `hop ${d.hop}  ·  in ${d.inDeg}  ·  out ${d.outDeg}`,
+        ].join('\n'),
+        rp.x,
+        rp.y,
+      );
+    });
+
+    cy.on('mouseover', 'edge', (event) => {
+      const edge = event.target;
+      const set = edge.union(edge.source()).union(edge.target());
+      cy.batch(() => {
+        cy.elements().not(set).addClass('is-faded');
+        set.addClass('is-hover');
+        edge.addClass('is-hover-label');
+      });
+      host.style.cursor = 'pointer';
+      const d = edge.data();
+      const tx = String(d.id).split('--')[2] ?? '';
+      const rp = event.renderedPosition;
+      showTooltip(
+        [
+          d.amountLabel,
+          `from ${shortAddress(d.source)}`,
+          `to   ${shortAddress(d.target)}`,
+          tx ? `tx   ${shortAddress(tx)}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        rp.x,
+        rp.y,
+      );
+    });
+
+    cy.on('mouseout', 'node, edge', clearHover);
+    cy.on('pan zoom drag', hideTooltip);
+
+    applyHidden(cy);
+    const layout = cy.elements(':visible').layout(layoutOptions());
+    layout.on('layoutstop', () => fitGraph(cy));
+    layout.run();
+
+    // Re-fit when the panel changes size, until the investigator pans or zooms themselves.
+    let userMoved = false;
+    const markMoved = () => {
+      userMoved = true;
+    };
+    host.addEventListener('wheel', markMoved, { once: true, passive: true });
+    host.addEventListener('pointerdown', markMoved, { once: true });
+
+>>>>>>> origin/main
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
           cy.resize();
+<<<<<<< HEAD
+=======
+          if (!userMoved) fitGraph(cy);
+>>>>>>> origin/main
         }
       }
     });
@@ -192,6 +358,7 @@ export function GraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
+<<<<<<< HEAD
   }, [elements, isReady]); // Intentionally not depending on theme here so we don't recreate the graph on theme toggle
 
   // Update Cytoscape style when theme changes without destroying the graph
@@ -200,6 +367,15 @@ export function GraphCanvas({
       cyRef.current.style().fromJson(getGraphStyle(theme === 'dark' ? 'dark' : 'light')).update();
     }
   }, [theme]);
+=======
+    // Theme is applied by the effect below so a toggle doesn't rebuild the graph.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements, isReady]);
+
+  useEffect(() => {
+    cyRef.current?.style().fromJson(getGraphStyle(mode)).update();
+  }, [mode]);
+>>>>>>> origin/main
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -231,14 +407,12 @@ export function GraphCanvas({
     });
   }, [emphasis, highlightEdges, selectedId]);
 
-  /**
-   * Filtering is expressed as `display: none` rather than by removing elements, so the
-   * investigator's pan and zoom survive a filter change. The layout is re-run because
-   * hiding a node in the middle of a dagre rank otherwise leaves a hole in the drawing.
-   */
+  /* Filtering hides nodes rather than removing them so pan and zoom survive, then
+     re-lays-out only what is still visible so no hole is left in a dagre rank. */
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+<<<<<<< HEAD
     cy.batch(() => {
       cy.nodes().forEach((node) => {
         node.style('display', hidden?.has(node.id()) ? 'none' : 'element');
@@ -251,6 +425,13 @@ export function GraphCanvas({
       cy.fit(undefined, pad);
     });
     layout.run();
+=======
+    applyHidden(cy);
+    const layout = cy.elements(':visible').layout(layoutOptions());
+    layout.on('layoutstop', () => fitGraph(cy));
+    layout.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+>>>>>>> origin/main
   }, [hidden]);
 
   useEffect(() => {
@@ -264,10 +445,26 @@ export function GraphCanvas({
   useImperativeHandle(
     ref,
     () => ({
-      relayout: () => cyRef.current?.layout(layoutOptions()).run(),
+      relayout: () => {
+        const cy = cyRef.current;
+        if (!cy) return;
+        const layout = cy.elements(':visible').layout(layoutOptions());
+        layout.on('layoutstop', () => fitGraph(cy));
+        layout.run();
+      },
       fit: () => {
         const cy = cyRef.current;
-        if (cy) cy.animate({ fit: { eles: cy.elements(), padding: 48 }, duration: 300 });
+        if (cy) {
+          cy.resize();
+          cy.animate({ fit: { eles: cy.elements(':visible'), padding: 64 }, duration: 300 });
+        }
+      },
+      resetZoom: () => {
+        const cy = cyRef.current;
+        if (cy) {
+          cy.resize();
+          cy.animate({ fit: { eles: cy.elements(':visible'), padding: 64 }, duration: 300 });
+        }
       },
       zoomBy: (factor) => {
         const cy = cyRef.current;
@@ -284,7 +481,44 @@ export function GraphCanvas({
     [],
   );
 
-  return <div className="graph-viewport" ref={hostRef} />;
+  const dark = mode === 'dark';
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+      <div className="graph-viewport" ref={hostRef} style={{ width: '100%', height: '100%' }} />
+      {/* Soft ambient glow behind the graph; never intercepts the mouse. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background: dark
+            ? 'radial-gradient(ellipse 60% 55% at 35% 50%, rgba(124,196,255,0.07), transparent 70%)'
+            : 'radial-gradient(ellipse 60% 55% at 35% 50%, rgba(37,99,235,0.06), transparent 70%)',
+        }}
+      />
+      <div
+        ref={tooltipRef}
+        style={{
+          display: 'none',
+          position: 'absolute',
+          pointerEvents: 'none',
+          zIndex: 5,
+          whiteSpace: 'pre',
+          padding: '8px 10px',
+          borderRadius: 8,
+          fontSize: 11,
+          lineHeight: 1.5,
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          background: dark ? 'rgba(13,17,26,0.96)' : 'rgba(255,255,255,0.97)',
+          color: dark ? '#dbe4f3' : '#1b2433',
+          border: `1px solid ${dark ? '#26324a' : '#d5dceb'}`,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+        }}
+      />
+    </div>
+  );
 }
 
 export default GraphCanvas;

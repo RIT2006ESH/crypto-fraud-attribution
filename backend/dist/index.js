@@ -34,6 +34,7 @@ app.get("/health", (_req, res) => {
         timestamp: new Date().toISOString(),
         etherscanConfigured: Boolean(config.etherscan.apiKey) && config.etherscan.apiKey !== "YourApiKeyToken",
         tronGridConfigured: Boolean(config.tronGrid.apiKey),
+        mlConfigured: Boolean(config.ml.url),
         chainId: config.etherscan.chainId,
         supportedChains: config.supportedChains.filter((c) => !c.multi).map((c) => c.id),
         labelRegistrySize: KNOWN_ADDRESSES.length,
@@ -49,4 +50,5 @@ app.listen(config.port, () => {
     console.log(`Labels    ${KNOWN_ADDRESSES.length} curated addresses (ETH + Tron) + live Etherscan lookup`);
     console.log(`Etherscan chainid=${config.etherscan.chainId}, ${config.etherscan.rateLimitPerSec} calls/sec`);
     console.log(`TronGrid  ${config.tronGrid.apiKey ? "key configured" : "public (no key)"}, ${config.tronGrid.rateLimitPerSec} calls/sec`);
+    console.log(`ML        ${config.ml.url ? `enabled (${config.ml.url})` : "disabled (set ML_URL to enable)"}`);
 });

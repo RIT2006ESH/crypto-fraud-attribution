@@ -35,7 +35,7 @@ export default function Workspace() {
       selection?.kind === 'node'
         ? selection.address.toLowerCase()
         : selection?.kind === 'edge'
-          ? selection.to.toLowerCase()
+          ? view.edges.find((e) => e.id === selection.id)?.target.toLowerCase() ?? null
           : null;
     if (!target) return null;
 
@@ -94,15 +94,8 @@ export default function Workspace() {
         actions.select({ kind: 'node', address: id });
         return;
       }
-      const edge = view.edges.find((e) => e.id === id);
-      if (edge) {
-        actions.select({
-          kind: 'edge',
-          txHash: edge.edge.txHash,
-          from: edge.source,
-          to: edge.target,
-          id,
-        });
+      if (kind === 'edge') {
+        actions.select({ kind: 'edge', id });
       }
     },
     [actions, view],

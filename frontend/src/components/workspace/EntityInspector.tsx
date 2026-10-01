@@ -7,7 +7,7 @@ import { formatAmount, formatDate, shortenAddress, shortenHash } from '../../for
 import CopyButton from '../common/CopyButton';
 import { DURATION, EASE } from '../../lib/motion';
 import { chainMeta } from '../../lib/chains';
-import { displaySymbol, symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
+import { symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
 
 /**
  * The inspector drawer.
@@ -140,7 +140,7 @@ function NodeInspector({
     <InspectorShell
       glyph={meta.glyph}
       color={meta.color}
-      title={node.entity ?? meta.label}
+      title={node.entityName ?? meta.label}
       kicker={node.isRoot ? 'Reported wallet' : `Hop ${node.hopDepth}`}
       onClose={onClose}
     >
@@ -234,8 +234,9 @@ function EdgeInspector({
 }) {
   const from = view.byAddress.get(edge.source);
   const to = view.byAddress.get(edge.target);
-  const txUrl = explorerTxUrl(chain, edge.edge.txHash);
-  const advisory = symbolAdvisory(edge.edge.tokenSymbol);
+  const firstTx = edge.transfers[0]?.txHash ?? '';
+  const txUrl = explorerTxUrl(chain, firstTx);
+  const advisory = symbolAdvisory(edge.isNative ? null : edge.assetLabel);
 
   return (
     <InspectorShell
@@ -249,12 +250,12 @@ function EdgeInspector({
           <div className="kv">
             <div className="kv__row">
               <span className="kv__key">Amount</span>
-              <span className="kv__val">{formatAmount(edge.edge.amount, edge.edge.tokenSymbol)}</span>
+              <span className="kv__val">{formatAmount(edge.totalAmount, edge.isNative ? null : edge.assetLabel)}</span>
             </div>
             <div className="kv__row">
               <span className="kv__key">Token</span>
               <span className="kv__val">
-                {displaySymbol(edge.edge.tokenSymbol)}
+                {edge.assetLabel}
                 {advisory ? (
                   <span className="inspector__warn" title={symbolAdvisoryText(advisory)}>
                     <TriangleAlert size={12} aria-hidden />
@@ -265,19 +266,19 @@ function EdgeInspector({
             </div>
             <div className="kv__row">
               <span className="kv__key">Transfer type</span>
-              <span className="kv__val">{edge.edge.transferType || 'native'}</span>
+              <span className="kv__val">{edge.transfers[0]?.transferType || (edge.isNative ? 'native' : 'token')}</span>
             </div>
             <div className="kv__row">
               <span className="kv__key">Observed</span>
-              <span className="kv__val">{formatDate(edge.edge.txTimestamp)}</span>
+              <span className="kv__val">{formatDate(edge.firstSeen)}</span>
             </div>
           </div>
         </Section>
 
         <Section title="Transaction">
           <div className="inspector__row">
-            <code className="inspector__mono">{edge.edge.txHash}</code>
-            <CopyButton value={edge.edge.txHash} label="Copy transaction hash" />
+            <code className="inspector__mono">{firstTx}</code>
+            <CopyButton value={firstTx} label="Copy transaction hash" />
             {txUrl ? (
               <a className="inspector__link" href={txUrl} target="_blank" rel="noreferrer noopener">
                 <ExternalLink size={12} aria-hidden />
@@ -292,7 +293,7 @@ function EdgeInspector({
           <Counterparty role="To" node={to ?? null} chain={chain} onFocus={onFocus} />
         </Section>
 
-        {edge.isOnPathRisk ? (
+        {edge.isRisk ? (
           <p className="disclosure__note" style={{ marginTop: 14, marginBottom: 0 }}>
             This transfer sends value into a mixer or sanctioned address. That is a routing
             signal, not proof of intent.
@@ -332,14 +333,14 @@ function Counterparty({
         type="button"
         className="counterparty"
         onClick={() => onFocus(node.id, 'node')}
-        title={`Inspect ${node.entity ?? shortenAddress(node.id)}`}
+        title={`Inspect ${node.entityName ?? shortenAddress(node.id)}`}
       >
         <span className="counterparty__glyph" style={{ color: meta.color }}>
           {meta.glyph}
         </span>
         <span className="counterparty__body">
-          <span className="counterparty__name" style={{ color: node.entity ? meta.color : undefined }}>
-            {node.entity ?? shortenAddress(node.id)}
+          <span className="counterparty__name" style={{ color: node.entityName ? meta.color : undefined }}>
+            {node.entityName ?? shortenAddress(node.id)}
           </span>
           <span className="tagline">
             {meta.label} · hop {node.hopDepth}
@@ -380,6 +381,7 @@ function TransferList({
           const otherId = edge.source === self ? edge.target : edge.source;
           const other = view.byAddress.get(otherId);
           const otherMeta = entityMeta(other?.labelType);
+          const txHash = edge.transfers[0]?.txHash ?? '';
           return (
             <li key={edge.id}>
               <button type="button" className="transfer-row" onClick={() => onFocus(edge.id, 'edge')}>
@@ -388,12 +390,12 @@ function TransferList({
                 </span>
                 <span className="transfer-row__body">
                   <span className="transfer-row__name">
-                    {other?.entity ?? shortenAddress(otherId)}
+                    {other?.entityName ?? shortenAddress(otherId)}
                   </span>
-                  <span className="tagline">{shortenHash(edge.edge.txHash)}</span>
+                  <span className="tagline">{shortenHash(txHash)}</span>
                 </span>
                 <span className="transfer-row__amount">
-                  {formatAmount(edge.edge.amount, edge.edge.tokenSymbol)}
+                  {formatAmount(edge.totalAmount, edge.isNative ? null : edge.assetLabel)}
                 </span>
               </button>
             </li>

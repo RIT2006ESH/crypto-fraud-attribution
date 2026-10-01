@@ -1,8 +1,12 @@
 import { useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+<<<<<<< HEAD
 import { ChevronLeft, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
+=======
+import { Search, TriangleAlert, X } from 'lucide-react';
+>>>>>>> origin/main
 import { entityMeta } from '../../lib/entities';
-import { displaySymbol, symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
+import { symbolAdvisory, symbolAdvisoryText } from '../../lib/symbols';
 import type { GraphView, Selection } from '../../lib/graph';
 import { shortenAddress, shortenHash } from '../../format';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -48,11 +52,12 @@ export default function LedgerPanel({
     const q = debounced.trim().toLowerCase();
     if (!q) return scoped;
     return scoped.filter((e) => {
-      const asset = (e.edge.tokenSymbol || '').toLowerCase();
+      const asset = (e.assetLabel || '').toLowerCase();
+      const hasTxMatch = e.transfers.some((t) => t.txHash.toLowerCase().includes(q));
       return (
         e.source.includes(q) ||
         e.target.includes(q) ||
-        e.edge.txHash.toLowerCase().includes(q) ||
+        hasTxMatch ||
         asset.includes(q)
       );
     });
@@ -157,8 +162,14 @@ export default function LedgerPanel({
                   const fromMeta = entityMeta(view.byAddress.get(edge.source)?.labelType ?? null);
                   const toMeta = entityMeta(view.byAddress.get(edge.target)?.labelType ?? null);
                   const isSelected = selection?.kind === 'edge' && selection.id === edge.id;
+<<<<<<< HEAD
                   const advisory = symbolAdvisory(edge.edge.tokenSymbol);
                   const symbol = displaySymbol(edge.edge.tokenSymbol);
+=======
+                  const advisory = symbolAdvisory(edge.isNative ? null : edge.assetLabel);
+                  const symbol = edge.assetLabel;
+                  const firstTx = edge.transfers[0]?.txHash ?? '';
+>>>>>>> origin/main
                   return (
                     <tr
                       key={edge.id}
@@ -174,7 +185,11 @@ export default function LedgerPanel({
                       role="button"
                       tabIndex={0}
                       aria-pressed={isSelected}
+<<<<<<< HEAD
                       aria-label={`Select transfer of ${formatQuantity(edge.amount)} ${symbol} from ${shortenAddress(edge.source)} to ${shortenAddress(edge.target)}`}
+=======
+                      aria-label={`Select transfer of ${formatQuantity(edge.totalAmount)} ${symbol} from ${shortenAddress(edge.source)} to ${shortenAddress(edge.target)}`}
+>>>>>>> origin/main
                       onClick={() => onSelect(edge.id, 'edge')}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -192,7 +207,11 @@ export default function LedgerPanel({
                           {toMeta.glyph} {shortenAddress(edge.target)}
                         </span>
                       </td>
+<<<<<<< HEAD
                       <td className="amount-cell">{formatQuantity(edge.amount)}</td>
+=======
+                      <td className="amount-cell">{formatQuantity(edge.totalAmount)}</td>
+>>>>>>> origin/main
                       <td>
                         <span
                           className="token-chip"
@@ -201,11 +220,21 @@ export default function LedgerPanel({
                           {advisory ? (
                             <TriangleAlert size={10} aria-hidden className="token-chip__warn" />
                           ) : null}
+<<<<<<< HEAD
                           {displaySymbol(edge.edge.tokenSymbol)}
                         </span>
                       </td>
                       <td>
                         <span className="tagline">{shortenHash(edge.edge.txHash)}</span>
+=======
+                          {symbol}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="tagline">
+                          {edge.transferCount === 1 ? shortenHash(firstTx) : `${edge.transferCount} txs`}
+                        </span>
+>>>>>>> origin/main
                       </td>
                     </tr>
                   );

@@ -121,9 +121,24 @@ export function investigationReducer(
 
     case 'run/resolve': {
       if (action.runId !== state.runId) return state;
+      const status = (action.result.status || '').toLowerCase();
+      // A FAILED trace used to land here as a green "Completed" case with an empty
+      // canvas and the real error buried in the record. Surface it as a failure with
+      // the service's own reason so a retry is one glance away.
+      if (status === 'failed') {
+        return {
+          ...state,
+          run: 'failed',
+          stage: 'settled',
+          result: action.result,
+          error: action.result.failureReason || 'The trace service failed this investigation.',
+          completedAt: action.at,
+          elapsedMs: action.at - (state.startedAt ?? action.at),
+        };
+      }
       // The backend can complete a trace with missing coverage. Surface that as a
       // distinct state instead of presenting a partial graph as complete.
-      const partial = (action.result.status || '').toLowerCase() === 'partial';
+      const partial = status === 'partial';
       return {
         ...state,
         run: partial ? 'partial' : 'completed',

@@ -180,6 +180,8 @@ export default function CaseBriefing({ result, elapsedMs }: { result: TraceResul
         </AnimatePresence>
       </div>
 
+      <MlIntelligence ml={result.ml} status={result.status} servedFromCache={result.servedFromCache} />
+
       <div className="glass-panel card-section">
         <div className="card-header">
           <h3 className="card-title">Case record</h3>
@@ -239,6 +241,233 @@ export default function CaseBriefing({ result, elapsedMs }: { result: TraceResul
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * The ML intelligence card: every model output the service attached to this trace.
+ *
+ * VASP attribution (known or inferred) with its confidence and SHAP-backed reasons,
+ * unlabelled look-alikes the model propagated a label to, heuristic clusters, and
+ * layering signals. When the Python ML service was unreachable the DTO carries no
+ * `ml` — the card says so and how to enable it, instead of silently showing a
+ * rule-only case as if that were the whole product.
+ */
+function MlIntelligence({
+  ml,
+  status,
+  servedFromCache,
+}: {
+  ml: TraceResult['ml'];
+  status: TraceResult['status'];
+  servedFromCache: TraceResult['servedFromCache'];
+}) {
+  // A failed trace owns the error banner; an "ML offline" note here would bury the lead.
+  if ((status || '').toLowerCase() === 'failed') return null;
+
+  if (!ml) {
+    return (
+      <div className="glass-panel card-section">
+        <div className="card-header">
+          <h3 className="card-title">ML intelligence</h3>
+          <span className="tagline">offline</span>
+        </div>
+        <p className="disclosure__note" style={{ margin: 0 }}>
+          {servedFromCache ? (
+            <>
+              This result was replayed from cache, which carries no model scoring. Run
+              the investigation again for a fresh ML-scored trace.
+            </>
+          ) : (
+            <>
+              The ML service (exchange-likelihood, clustering, layering) did not score
+              this trace. Run <code>uvicorn main:app --port 8000</code> in{' '}
+              <code>backend/ml-service</code> and set{' '}
+              <code>ML_URL=http://127.0.0.1:8000</code> to enable it.
+            </>
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  const vasp = ml.vasp ?? null;
+  const alternatives = ml.alternatives ?? [];
+  const propagated = ml.propagated ?? [];
+  const layering = ml.layering ?? [];
+  const clusters = Object.entries(ml.clusters ?? {});
+  const anomalies = ml.anomalies ?? [];
+  const suspectedMixers = ml.suspectedMixers ?? [];
+  const empty =
+    !vasp &&
+    alternatives.length === 0 &&
+    propagated.length === 0 &&
+    layering.length === 0 &&
+    clusters.length === 0 &&
+    anomalies.length === 0 &&
+    suspectedMixers.length === 0;
+
+  return (
+    <div className="glass-panel card-section">
+      <div className="card-header">
+        <h3 className="card-title">ML intelligence</h3>
+        <span className="tagline">model-scored</span>
+      </div>
+
+      {empty ? (
+        <p className="disclosure__note" style={{ margin: 0 }}>
+          The model scored this trace and fired no signals — no VASP candidate, no
+          look-alike addresses, no clusters, no layering patterns.
+        </p>
+      ) : null}
+
+      {vasp ? (
+        <>
+          <span className="card-label">Likely cash-out point</span>
+          <div className="briefing__row">
+            <span>{shortenAddress(vasp.address)}</span>
+            <span className="briefing__conf">
+              <span className="briefing__conf-num">{(vasp.confidence * 100).toFixed(1)}%</span>
+              <span className="briefing__conf-cap">{vasp.basis === 'known_label' ? 'labelled' : 'inferred'}</span>
+            </span>
+          </div>
+          <p className="disclosure__note" style={{ margin: '6px 0 0' }}>
+            {vasp.hops} hop{vasp.hops === 1 ? '' : 's'} from the reported wallet · received {vasp.received}
+          </p>
+          {vasp.reasons.length > 0 ? (
+            <ul className="risk-factors" style={{ listStyle: 'none', margin: '8px 0 0', padding: 0 }}>
+              {vasp.reasons.map((reason, i) => (
+                <li key={i} className="risk-factor">
+                  <span className="risk-factor__name">{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+
+      {alternatives.length > 0 ? (
+        <>
+          <span className="card-label">Other candidates</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {alternatives.map((alt) => (
+              <li key={alt.address} className="risk-factor">
+                <span className="risk-factor__name">
+                  {shortenAddress(alt.address)} · {(alt.confidence * 100).toFixed(1)}% · {alt.hops} hop{alt.hops === 1 ? '' : 's'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {propagated.length > 0 ? (
+        <>
+          <span className="card-label">Look-alike addresses ({propagated.length})</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {propagated.map((p) => (
+              <li key={p.address} className="risk-factor">
+                <span className="risk-factor__name">
+                  {shortenAddress(p.address)} · {(p.similarity * 100).toFixed(1)}% like {shortenAddress(p.like)} ({p.basis})
+                  {p.reasons[0] ? <span style={{ display: 'block', opacity: 0.75 }}>{p.reasons[0]}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {!ml.anomalyAvailable ? (
+        <p className="disclosure__note" style={{ margin: '8px 0 0' }}>
+          Too few addresses in this trace for anomaly scoring (Isolation Forest needs
+          8+). Structural layering rules above still apply.
+        </p>
+      ) : anomalies.length > 0 ? (
+        <>
+          <span className="card-label">Anomalous addresses ({anomalies.length})</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {anomalies.map((a) => (
+              <li key={a.address} className="risk-factor">
+                <span className="risk-factor__name">
+                  {shortenAddress(a.address)} · anomaly {(a.anomaly * 100).toFixed(0)}%
+                  {a.flags.length > 0 ? <span style={{ display: 'block', opacity: 0.75 }}>{a.flags.join(', ')}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="disclosure__note" style={{ margin: '6px 0 0' }}>
+            Unsupervised outliers relative to this trace — no labelled fraud data used.
+          </p>
+        </>
+      ) : null}
+
+      {suspectedMixers.length > 0 ? (
+        <>
+          <span className="card-label">Suspected mixers ({suspectedMixers.length})</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {suspectedMixers.map((s) => (
+              <li key={s.address} className="risk-factor">
+                <span className="risk-factor__name">
+                  {shortenAddress(s.address)} · {(s.mixerProb * 100).toFixed(1)}% mixer
+                  {s.reasons[0] ? <span style={{ display: 'block', opacity: 0.75 }}>{s.reasons[0]}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="disclosure__note" style={{ margin: '6px 0 0' }}>
+            Behavioural call, not a registry hit — these nodes are labelled MIXER in the
+            graph with the model confidence.
+          </p>
+        </>
+      ) : null}
+
+      {clusters.length > 0 ? (
+        <>
+          <span className="card-label">Clusters ({clusters.length})</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {clusters.map(([key, members]) => (
+              <li key={key} className="risk-factor">
+                <span className="risk-factor__name">
+                  {key} · {members.length} member{members.length === 1 ? '' : 's'}
+                  {members.length > 0 ? (
+                    <span style={{ display: 'block', opacity: 0.75 }}>
+                      {members.slice(0, 4).map(shortenAddress).join(', ')}
+                      {members.length > 4 ? ` +${members.length - 4} more` : ''}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {layering.length > 0 ? (
+        <>
+          <span className="card-label">Layering signals ({layering.length})</span>
+          <ul className="risk-factors" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {layering.map((pattern, i) => (
+              <li key={`${pattern.type}-${i}`} className="risk-factor">
+                <span className="risk-factor__name">
+                  {pattern.type} — {pattern.detail}
+                  {typeof pattern.max_anomaly === 'number' && pattern.max_anomaly > 0 ? (
+                    <span style={{ display: 'block', opacity: 0.75 }}>
+                      peak anomaly {(pattern.max_anomaly * 100).toFixed(0)}%
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {ml.note ? (
+        <p className="disclosure__note" style={{ marginBottom: 0 }}>
+          {ml.note}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

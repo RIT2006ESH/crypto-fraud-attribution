@@ -109,3 +109,10 @@ export function categorize(score: number | null | undefined): RiskCategory | nul
   if (score >= 25) return 'MEDIUM';
   return 'LOW';
 }
+
+export function isRealSignal(signal: string | null | undefined): boolean {
+  if (!signal) return false;
+  const s = signal.trim().toLowerCase();
+  return s.length > 0 && !s.includes('no high-risk patterns detected') && !s.includes('no risk patterns detected');
+}
+
