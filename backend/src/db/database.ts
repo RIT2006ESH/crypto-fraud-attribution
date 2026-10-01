@@ -98,6 +98,21 @@ export function initDatabase() {
       actor_type TEXT NOT NULL,
       metadata_json TEXT
     );
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      investigation_id TEXT NOT NULL,
+      case_id TEXT,
+      version INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      generated_at TEXT NOT NULL,
+      generated_by TEXT,
+      file_path TEXT,
+      file_size INTEGER,
+      page_count INTEGER,
+      sha256_hash TEXT,
+      report_data_json TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
 
   migrate();
@@ -122,7 +137,26 @@ function migrate() {
   }
   if (!edgeColumns.some((c) => c.name === "transfer_type")) {
     db.exec("ALTER TABLE graph_edges ADD COLUMN transfer_type TEXT NOT NULL DEFAULT 'native'");
-    console.log("[database] migrated graph_edges: added transfer_type");
+  }
+  const reportColumns = db.prepare("PRAGMA table_info(reports)").all() as Array<{ name: string }>;
+  if (reportColumns.length === 0) {
+     db.exec(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      investigation_id TEXT NOT NULL,
+      case_id TEXT,
+      version INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      generated_at TEXT NOT NULL,
+      generated_by TEXT,
+      file_path TEXT,
+      file_size INTEGER,
+      page_count INTEGER,
+      sha256_hash TEXT,
+      report_data_json TEXT,
+      created_at TEXT NOT NULL
+    );`);
+    console.log("[database] migrated reports: added reports table");
   }
 }
 
@@ -380,4 +414,70 @@ export const graphEdgeRepository = {
     );
     return { ...edge, id };
   },
+};
+
+export const reportRepository = {
+  findById(id: string): any | undefined {
+    const stmt = db.prepare(`
+      SELECT id, investigation_id as investigationId, case_id as caseId, version as reportVersion, status,
+             generated_at as generatedAt, generated_by as generatedBy, file_path as reportPath,
+             file_size as fileSize, page_count as pageCount, sha256_hash as reportHash, report_data_json as reportDataJson
+      FROM reports WHERE id = ?
+    `);
+    return stmt.get(id);
+  },
+  
+  findByInvestigationId(investigationId: string): any[] {
+     const stmt = db.prepare(`
+      SELECT id, investigation_id as investigationId, case_id as caseId, version as reportVersion, status,
+             generated_at as generatedAt, generated_by as generatedBy, file_path as reportPath,
+             file_size as fileSize, page_count as pageCount, sha256_hash as reportHash, report_data_json as reportDataJson
+      FROM reports WHERE investigation_id = ? ORDER BY version DESC
+    `);
+    return stmt.all(investigationId) as any[];
+  },
+
+  save(req: any): any {
+    const id = req.id || crypto.randomUUID();
+    const existing = req.id ? this.findById(req.id) : undefined;
+    const createdAt = new Date().toISOString();
+
+    if (existing) {
+      const stmt = db.prepare(`
+        UPDATE reports
+        SET status = ?, file_path = ?, file_size = ?, page_count = ?, sha256_hash = ?, report_data_json = ?
+        WHERE id = ?
+      `);
+      stmt.run(
+        req.status,
+        req.reportPath || null,
+        req.fileSize || null,
+        req.pageCount || null,
+        req.reportHash || null,
+        req.reportDataJson || null,
+        id
+      );
+    } else {
+      const stmt = db.prepare(`
+        INSERT INTO reports (id, investigation_id, case_id, version, status, generated_at, generated_by, file_path, file_size, page_count, sha256_hash, report_data_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        id,
+        req.investigationId,
+        req.caseId || null,
+        req.reportVersion,
+        req.status,
+        req.generatedAt,
+        req.generatedBy || null,
+        req.reportPath || null,
+        req.fileSize || null,
+        req.pageCount || null,
+        req.reportHash || null,
+        req.reportDataJson || null,
+        createdAt
+      );
+    }
+    return this.findById(id)!;
+  }
 };

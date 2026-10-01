@@ -4,6 +4,7 @@ import { config, assertConfig } from "./config.js";
 import { initDatabase } from "./db/database.js";
 import { createTraceRouter } from "./controllers/TraceController.js";
 import { createCaseRouter } from "./controllers/CaseController.js";
+import { createReportRouter } from "./controllers/ReportController.js";
 import { LabelService } from "./labels/LabelService.js";
 import { KNOWN_ADDRESSES } from "./labels/knownAddresses.js";
 import { TraceOrchestrationService } from "./services/TraceOrchestrationService.js";
@@ -32,6 +33,12 @@ app.use("/api/traces", createTraceRouter(orchestrationService));
 
 // Mount the cases router
 app.use("/api/cases", createCaseRouter());
+
+// Mount the report routers
+const reportRouter = createReportRouter(orchestrationService);
+app.use("/api/investigations", reportRouter);
+app.use("/api/reports", reportRouter);
+
 
 // Top-level alias: GET /api/chains (more discoverable for frontend consumers)
 app.get("/api/chains", (_req, res) => {

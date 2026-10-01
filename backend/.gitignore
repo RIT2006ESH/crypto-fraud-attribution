@@ -4,5 +4,9 @@ build/
 .env
 .env.*
 *.log
+data/
 coverage/
 .nyc_output/
+*.sqlite
+*.sqlite3
+*.db
