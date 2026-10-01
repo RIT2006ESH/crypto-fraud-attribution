@@ -149,14 +149,28 @@ export const typeDefs = /* GraphQL */ `
     caseId: String
   }
 
+  type Report {
+    id: ID!
+    investigationId: String!
+    caseId: String
+    version: Int!
+    status: String!
+    generatedAt: String!
+    sha256: String
+    pageCount: Int
+    fileSizeBytes: Int
+  }
+
   type Query {
     investigation(id: ID!): Investigation
     addressLabel(address: String!, chain: String = "ethereum"): AddressLabel
     health: Health!
     chains: [ChainInfo!]!
+    report(id: ID!): Report
   }
 
   type Mutation {
     submitInvestigation(input: TraceInput!): Investigation!
+    generateInvestigationReport(investigationId: ID!, includeFullLedger: Boolean): Report!
   }
 `;

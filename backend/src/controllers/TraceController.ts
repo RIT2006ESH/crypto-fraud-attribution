@@ -104,7 +104,7 @@ export function createTraceRouter(orchestrationService: TraceOrchestrationServic
     }
   });
 
-  // GET /api/traces/:id/report
+  // GET /api/traces/:id/report (Legacy backward compatible)
   traceRouter.get("/:id/report", async (req: Request, res: Response) => {
     try {
       const result = orchestrationService.get(String(req.params.id));
@@ -113,10 +113,14 @@ export function createTraceRouter(orchestrationService: TraceOrchestrationServic
         return;
       }
 
-      const pdfBuffer = await reportService.render(result as TraceResultDto);
+      const report = await reportService.generateReport(result as any);
+      if (report.status === "FAILED" || !report.reportPath || !require('fs').existsSync(report.reportPath)) {
+          res.status(500).json({ error: "REPORT_GENERATION_FAILED" });
+          return;
+      }
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName(result as TraceResultDto)}"`);
-      res.send(pdfBuffer);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(result as any)}"`);
+      res.sendFile(require('path').resolve(report.reportPath));
     } catch (error: unknown) {
       console.error("[TraceController] Error rendering report:", error);
       res.status(500).json({ error: "Could not render report" });

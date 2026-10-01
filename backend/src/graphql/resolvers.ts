@@ -5,6 +5,8 @@ import { LabelService } from "../labels/LabelService.js";
 import { KNOWN_ADDRESSES } from "../labels/knownAddresses.js";
 import { TraceResultDto } from "../types/index.js";
 import { describeAddressProblem, normalizeAddress } from "../util/address.js";
+import { ReportService } from "../services/ReportService.js";
+import { reportRepository } from "../db/database.js";
 
 export interface GraphQLContext {
   orchestrationService: TraceOrchestrationService;
@@ -164,6 +166,22 @@ export const resolvers = {
     }),
 
     chains: () => config.supportedChains,
+
+    report: (_parent: unknown, args: { id: string }) => {
+      const report = reportRepository.findById(args.id);
+      if (!report) return null;
+      return {
+        id: report.id,
+        investigationId: report.investigationId,
+        caseId: report.caseId,
+        version: report.reportVersion,
+        status: report.status,
+        generatedAt: report.generatedAt,
+        sha256: report.reportHash,
+        pageCount: report.pageCount,
+        fileSizeBytes: report.fileSize
+      };
+    },
   },
 
   Mutation: {
@@ -197,6 +215,30 @@ export const resolvers = {
         : result as TraceResultDto;
 
       return toInvestigation(dto);
+    },
+
+    generateInvestigationReport: async (
+      _parent: unknown,
+      args: { investigationId: string; includeFullLedger?: boolean },
+      ctx: GraphQLContext
+    ) => {
+      const result = ctx.orchestrationService.get(args.investigationId);
+      if (!result) {
+        throw new GraphQLError("INVESTIGATION_NOT_FOUND");
+      }
+      const reportService = new ReportService();
+      const report = await reportService.generateReport(result as any, { includeFullLedger: args.includeFullLedger });
+      return {
+        id: report.id,
+        investigationId: report.investigationId,
+        caseId: report.caseId,
+        version: report.reportVersion,
+        status: report.status,
+        generatedAt: report.generatedAt,
+        sha256: report.reportHash,
+        pageCount: report.pageCount,
+        fileSizeBytes: report.fileSize
+      };
     },
   },
 };

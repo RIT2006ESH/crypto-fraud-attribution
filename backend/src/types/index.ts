@@ -229,3 +229,6 @@ export interface MultiChainTraceResultDto {
   overallRiskScore: number;
   overallRiskCategory: string;
 }
+
+export * from "./report.js";
+
